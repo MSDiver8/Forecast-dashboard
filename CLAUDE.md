@@ -6,7 +6,7 @@
 
 ## Текущий этап
 
-Этап 0: разбор прототипа завершён (`docs/prototype-review.md`), далее каркас репозитория. Этапы и критерии приёмки — раздел 10 ТЗ.
+Собран MVP (решение заказчика 7 октября 2026 — делать MVP целиком и показать): группы A, B, C загружены частично, группа F отложена. Список открытых вопросов — в последнем отчёте заказчику и `docs/CHANGELOG.md`. Этапы и критерии приёмки — раздел 10 ТЗ.
 
 ## Принятые решения
 
@@ -40,7 +40,9 @@ Python 3.12, uv, ruff, pytest, DuckDB, pandas, statsmodels, statsforecast, httpx
 - `uv sync` — установить зависимости
 - `uv run pytest` — тесты
 - `uv run ruff check . && uv run ruff format .` — проверка и форматирование
-- `uv run fdash ingest --all`, `uv run fdash status`, `uv run fdash serve` — появятся на этапах 0–3
+- `uv run fdash ingest --all`, `uv run fdash status`, `uv run fdash rebuild`, `uv run fdash serve` (порт 8100)
+- `cd web && npm run build` — собрать интерфейс
+- На этой машине проект в iCloud: перед `uv` задавать `UV_PROJECT_ENVIRONMENT=$HOME/.local/share/fdash/venv` (см. README)
 
 ## Структура
 

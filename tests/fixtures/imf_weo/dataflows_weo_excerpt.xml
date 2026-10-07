@@ -1,0 +1,62 @@
+<str:Dataflow urn="urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.RES:WEO(9.0.0)" agencyID="IMF.RES" id="WEO" version="9.0.0" isFinal="true" isExternalReference="false">
+        <com:Annotations>
+          <com:Annotation id="@IMF">
+            <com:AnnotationTitle>H_WEO_PROJECTIONS</com:AnnotationTitle>
+            <com:AnnotationType>DATAFLOW_PRESENTATION</com:AnnotationType>
+            <com:AnnotationText xml:lang="en">presentation_title=WEO Projections; presentation_description=Real GDP growth (NGDP_RPCH) projections for aggregates and key economies</com:AnnotationText>
+          </com:Annotation>
+          <com:Annotation id="@IMF">
+            <com:AnnotationTitle></com:AnnotationTitle>
+            <com:AnnotationType>DEFAULT_PRESENTATION </com:AnnotationType>
+          </com:Annotation>
+          <com:Annotation id="@SDMX">
+            <com:AnnotationTitle>INDICATOR=NGDP_RPCH,COUNTRY=G001+G110+G200+G205+G400+G505+G603+G903</com:AnnotationTitle>
+            <com:AnnotationType>DEFAULT</com:AnnotationType>
+          </com:Annotation>
+          <com:Annotation id="dataEngineSettings"/>
+          <com:Annotation id="origin"/>
+          <com:Annotation id="DataEngine">
+            <com:AnnotationTitle>timeseries_v2</com:AnnotationTitle>
+          </com:Annotation>
+          <com:Annotation id="isFinal"/>
+          <com:Annotation id="lastUpdatedAt"/>
+        </com:Annotations>
+        <com:Name xml:lang="en">World Economic Outlook (WEO)</com:Name>
+        <com:Description xml:lang="en">The World Economic Outlook (WEO) database is created during the biannual WEO exercise, which begins in January and June of each year and results in the April and September/October WEO publication. Selected series from the publication are available in a database format. </com:Description>
+        <str:Structure>
+          <Ref agencyID="IMF.RES" id="DSD_WEO" version="9.0.0" package="datastructure" class="DataStructure"/>
+        </str:Structure>
+      </str:Dataflow>
+<str:Dataflow urn="urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.RES:WEO_2025_OCT_VINTAGE(1.0.0)" agencyID="IMF.RES" id="WEO_2025_OCT_VINTAGE" version="1.0.0" isFinal="true" isExternalReference="false">
+        <com:Annotations>
+          <com:Annotation id="@IMF">
+            <com:AnnotationTitle>H_WEO_PROJECTIONS</com:AnnotationTitle>
+            <com:AnnotationType>DATAFLOW_PRESENTATION</com:AnnotationType>
+            <com:AnnotationText xml:lang="en">presentation_title=WEO Projections; presentation_description=Real GDP growth (NGDP_RPCH) projections for aggregates and key economies</com:AnnotationText>
+          </com:Annotation>
+          <com:Annotation id="dataEngineSettings"/>
+          <com:Annotation id="ORIGIN">
+            <com:AnnotationTitle>IMF.RES:WEO(9.0.0)</com:AnnotationTitle>
+            <com:AnnotationType>SYSTEM</com:AnnotationType>
+          </com:Annotation>
+          <com:Annotation id="VINTAGE">
+            <com:AnnotationTitle>Vintage for 2025-10-14</com:AnnotationTitle>
+            <com:AnnotationType>SYSTEM</com:AnnotationType>
+          </com:Annotation>
+          <com:Annotation id="REF_PERIOD">
+            <com:AnnotationTitle>2025-10-14</com:AnnotationTitle>
+            <com:AnnotationType>SYSTEM</com:AnnotationType>
+          </com:Annotation>
+          <com:Annotation id="origin"/>
+          <com:Annotation id="DataEngine">
+            <com:AnnotationTitle>timeseries_v2</com:AnnotationTitle>
+          </com:Annotation>
+          <com:Annotation id="isFinal"/>
+          <com:Annotation id="lastUpdatedAt"/>
+        </com:Annotations>
+        <com:Name xml:lang="en">World Economic Outlook (WEO) 2025 October</com:Name>
+        <com:Description xml:lang="en">World Economic Outlook (WEO) 2025 October</com:Description>
+        <str:Structure>
+          <Ref agencyID="IMF.RES" id="DSD_WEO_VINTAGE" version="1.0.0" package="datastructure" class="DataStructure"/>
+        </str:Structure>
+      </str:Dataflow>

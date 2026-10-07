@@ -1,0 +1,156 @@
+# Indicator catalog. An indicator is a definition (measure, unit, base); the area is a
+# separate dimension. Series of different sources are compared only when indicator, unit,
+# base and area coincide (CLAUDE.md, SPEC 4.1). Notes record known caveats per series.
+
+groups:
+  - {id: A, name: "Россия, годовые"}
+  - {id: B, name: "Мир, годовые"}
+  - {id: C, name: "Нефть Brent"}
+  - {id: F, name: "Зерновые рынки"}
+
+areas:
+  - {id: WORLD, name: "Мир", kind: aggregate}
+  - {id: RU, name: "Россия", kind: country}
+  - {id: EA, name: "Еврозона", kind: aggregate}
+  - {id: US, name: "США", kind: country}
+  - {id: DE, name: "Германия", kind: country}
+  - {id: FR, name: "Франция", kind: country}
+  - {id: IT, name: "Италия", kind: country}
+  - {id: ES, name: "Испания", kind: country}
+  - {id: GB, name: "Великобритания", kind: country}
+  - {id: JP, name: "Япония", kind: country}
+  - {id: CN, name: "Китай", kind: country}
+
+indicators:
+  - id: brent_price
+    name: "Цена нефти Brent"
+    unit: "долл. США за баррель"
+    transform: avg_period
+    base: "средняя за период, номинальная"
+    groups: [C]
+    precision: 2
+    actual_source: eia_brent_spot
+    description: "Средняя спотовая цена нефти Brent за месяц, квартал или год."
+  - id: gdp_growth
+    name: "Рост реального ВВП"
+    unit: "%, год к году"
+    transform: yoy
+    base: "реальный ВВП, в среднем за год к предыдущему году"
+    groups: [A, B]
+    precision: 1
+  - id: cpi_avg
+    name: "Инфляция, в среднем за год"
+    unit: "% к предыдущему году"
+    transform: avg_year_yoy
+    base: "средний за год индекс цен к предыдущему году; еврозона и страны ЕС, Великобритания — HICP, остальные — национальный ИПЦ"
+    groups: [A, B]
+    precision: 1
+  - id: cpi_dec
+    name: "Инфляция, декабрь к декабрю"
+    unit: "% к декабрю предыдущего года"
+    transform: dec_dec
+    base: "индекс цен на конец года к концу предыдущего года"
+    groups: [A]
+    precision: 1
+    actual_source: cbr_stats
+  - id: unemployment_avg
+    name: "Уровень безработицы, в среднем за год"
+    unit: "% рабочей силы"
+    transform: avg_year
+    base: "в среднем за год"
+    groups: [A, B]
+    precision: 1
+  - id: key_rate_avg
+    name: "Ключевая ставка Банка России, в среднем за год"
+    unit: "% годовых"
+    transform: avg_year
+    base: "в среднем за год с учётом выходных дней"
+    groups: [A]
+    precision: 1
+    actual_source: cbr_stats
+  - id: exports_usd
+    name: "Экспорт товаров и услуг"
+    unit: "млрд долл. США в год"
+    transform: sum_year
+    groups: [A]
+    precision: 0
+  - id: imports_usd
+    name: "Импорт товаров и услуг"
+    unit: "млрд долл. США в год"
+    transform: sum_year
+    groups: [A]
+    precision: 0
+  - id: oil_tax_price
+    name: "Цена нефти для налогообложения"
+    unit: "долл. США за баррель"
+    transform: avg_year
+    base: "в среднем за год; цена российской нефти, публикуемая Минэкономразвития"
+    groups: [A]
+    precision: 1
+
+series:
+  # Group C: Brent
+  - {source: eia_brent_spot, code: RBRTE, indicator: brent_price, area: WORLD}
+  - {source: eia_steo, code: BREPUUS, indicator: brent_price, area: WORLD,
+     note: "Только месячные значения; годовые и квартальные — среднее месяцев выпуска"}
+  - {source: wb_cmo, code: "Crude oil, Brent", indicator: brent_price, area: WORLD}
+  - {source: boe_mpr, code: "Oil prices", indicator: brent_price, area: WORLD,
+     note: "Рыночная предпосылка по фьючерсам Brent, средняя за IV (в апреле 2026 — II) квартал года; не собственный прогноз"}
+  - {source: ecb_mpd, code: "MPD A1.POU.U", indicator: brent_price, area: WORLD,
+     note: "Предпосылка ЕЦБ по фьючерсам Brent; годовые и квартальные средние"}
+  - {source: cbr_survey, code: "13", indicator: brent_price, area: WORLD,
+     note: "Медиана опроса; диапазон — 10–90-й процентили; вопрос задавался с 12.2023 по 02.2025"}
+  # Group A: Bank of Russia survey
+  - {source: cbr_survey, code: "1", indicator: cpi_dec, area: RU}
+  - {source: cbr_survey, code: "2", indicator: cpi_avg, area: RU}
+  - {source: cbr_survey, code: "3", indicator: key_rate_avg, area: RU}
+  - {source: cbr_survey, code: "4", indicator: gdp_growth, area: RU}
+  - {source: cbr_survey, code: "5", indicator: unemployment_avg, area: RU}
+  - {source: cbr_survey, code: "9", indicator: exports_usd, area: RU}
+  - {source: cbr_survey, code: "10", indicator: imports_usd, area: RU}
+  - {source: cbr_survey, code: "12", indicator: oil_tax_price, area: RU}
+  # IMF WEO (groups A and B)
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: RU}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: WORLD}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: EA}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: US}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: DE}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: FR}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: IT}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: ES}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: GB}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: JP}
+  - {source: imf_weo, code: NGDP_RPCH, indicator: gdp_growth, area: CN}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: RU, note: "национальный ИПЦ"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: WORLD, note: "национальный ИПЦ"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: EA, note: "HICP"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: US, note: "национальный ИПЦ"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: DE, note: "HICP"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: FR, note: "HICP"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: IT, note: "HICP"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: ES, note: "HICP"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: GB, note: "HICP"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: JP, note: "национальный ИПЦ"}
+  - {source: imf_weo, code: PCPIPCH, indicator: cpi_avg, area: CN, note: "национальный ИПЦ"}
+  - {source: imf_weo, code: PCPIEPCH, indicator: cpi_dec, area: RU}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: RU}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: WORLD}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: EA}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: US}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: DE}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: FR}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: IT}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: ES}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: GB}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: JP}
+  - {source: imf_weo, code: LUR, indicator: unemployment_avg, area: CN}
+  # ECB staff projections, euro area (group B)
+  - {source: ecb_mpd_macro, code: YER, indicator: gdp_growth, area: EA,
+     note: "ЕЦБ: с поправкой на рабочие дни, еврозона в меняющемся составе"}
+  - {source: ecb_mpd_macro, code: HIC, indicator: cpi_avg, area: EA, note: "HICP"}
+  - {source: ecb_mpd_macro, code: URX, indicator: unemployment_avg, area: EA}
+  # Reference actuals, Russia
+  - {source: cbr_stats, code: "infl.xlsx: Инфляция, % г/г (декабрь)", indicator: cpi_dec, area: RU,
+     note: "Данные Росстата, публикуемые Банком России"}
+  - {source: cbr_stats, code: "KeyRateXML", indicator: key_rate_avg, area: RU,
+     note: "Среднее по календарным дням; в выходные — последняя установленная ставка"}
