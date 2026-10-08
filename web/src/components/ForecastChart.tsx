@@ -155,7 +155,7 @@ export const ForecastChart = forwardRef<ChartHandle, Props>(function ForecastCha
           series.push({ ...common, id: `band${level}-lo:${line.key}`, data: lower, areaStyle: { opacity: 0 } });
           series.push({ ...common, id: `band${level}-w:${line.key}`, data: width, areaStyle: { color: withAlpha(line.color, alpha) } });
         }
-      } else if (showBands && hasRange) {
+      } else if (showBands && hasRange && !isModel) {  // published ranges only, never model intervals
         const slot = ranged.indexOf(line);
         const dx = (slot - (ranged.length - 1) / 2) * 7;
         const data = line.points
@@ -212,7 +212,7 @@ export const ForecastChart = forwardRef<ChartHandle, Props>(function ForecastCha
           const body = rows.map(({ line, value }) => {
             const point = line.points.find((p) => p.period === period);
             const range = point && point.lower != null && point.upper != null
-              ? ` <span style="color:#697583">(${formatValue(point.lower, precision)}–${formatValue(point.upper, precision)})</span>`
+              ? ` <span style="color:#697583">(${line.kind === "model" ? "95%: " : ""}${formatValue(point.lower, precision)}–${formatValue(point.upper, precision)})</span>`
               : "";
             const vintage = line.vintage ? `<div style="color:#697583;font-size:11px">${t("chart.vintage", { date: formatShortDate(line.vintage) })}</div>` : "";
             const dash = line.kind === "model" ? "border-top:2px dashed" : "border-top:3px solid";

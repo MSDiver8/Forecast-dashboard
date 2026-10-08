@@ -121,7 +121,8 @@ export function buildLines(
       latest: true,
       connect: true,
       points: [
-        { period: run.origin, value: run.anchor },
+        // The fan starts at the last actual value: zero width at the origin.
+        { period: run.origin, value: run.anchor, lower: run.anchor, upper: run.anchor, lower80: run.anchor, upper80: run.anchor },
         ...run.points.map((p) => ({
           period: p.period, value: p.value, lower: p.lower95, upper: p.upper95, lower80: p.lower80, upper80: p.upper80,
         })),
