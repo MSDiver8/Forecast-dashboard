@@ -9,11 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@fontsource/fira-sans-condensed": "^5.1.0",
-    "@fontsource/pt-sans": "^5.1.0",
+    "echarts": "^6.1.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "recharts": "^3.0.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

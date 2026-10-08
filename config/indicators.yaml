@@ -2,6 +2,71 @@
 # separate dimension. Series of different sources are compared only when indicator, unit,
 # base and area coincide (CLAUDE.md, SPEC 4.1). Notes record known caveats per series.
 
+# Curated indicators shown in the dashboard: every one has an official actual series and
+# two or more forecast sources with the same definition (unit, base, area).
+featured:
+  - id: brent
+    indicator: brent_price
+    area: WORLD
+    frequency: A
+    category: "Сырьевые рынки"
+    title: "Нефть Brent"
+    short: "Brent"
+    subtitle: "средняя за период, номинальная"
+    description: "Средняя цена нефти Brent, долл. за баррель. Прогноз EIA, Всемирного банка, рыночные предпосылки ЕЦБ и Банка Англии, опрос аналитиков Банка России."
+  - id: ru-inflation
+    indicator: cpi_dec
+    area: RU
+    frequency: A
+    category: "Россия · цены"
+    title: "Инфляция в России"
+    short: "Инфляция РФ"
+    subtitle: "декабрь к декабрю предыдущего года"
+    description: "Рост потребительских цен в декабре к декабрю предыдущего года, %. Прогноз Банка России, консенсус аналитиков и МВФ."
+  - id: ru-key-rate
+    indicator: key_rate_avg
+    area: RU
+    frequency: A
+    category: "Россия · деньги"
+    title: "Ключевая ставка"
+    short: "Ключевая ставка"
+    subtitle: "в среднем за год с учётом выходных дней"
+    description: "Средняя ключевая ставка за год с учётом выходных, % годовых. Траектория Банка России против ожиданий аналитиков."
+  - id: ru-gdp
+    indicator: gdp_growth
+    area: RU
+    frequency: A
+    category: "Россия · экономика"
+    title: "Рост ВВП России"
+    short: "ВВП РФ"
+    subtitle: "реальный ВВП к предыдущему году"
+    description: "Темп роста реального ВВП, % к предыдущему году. Прогноз Банка России, консенсус аналитиков и МВФ."
+  - id: ea-inflation
+    indicator: cpi_avg
+    area: EA
+    frequency: A
+    category: "Мир · цены"
+    title: "Инфляция в еврозоне"
+    short: "Инфляция ЕЗ"
+    subtitle: "HICP, в среднем за год к предыдущему году; еврозона в меняющемся составе"
+    description: "Гармонизированный индекс потребительских цен (HICP), % в среднем за год. Прогноз ЕЦБ, опрос профессиональных прогнозистов SPF и МВФ."
+
+# How sources are named and coloured in the dashboard, with what a user must know about them.
+source_info:
+  eia_brent_spot: {short: "Факт (EIA)", color: "#62b4dc", description: "Спотовая цена Brent FOB, ряд RBRTE. Месячные и годовые средние."}
+  cbr_stats: {short: "Факт (Банк России)", color: "#62b4dc", description: "Инфляция — данные Росстата в публикации Банка России; ключевая ставка — дневные значения, среднее по календарным дням."}
+  wb_wdi: {short: "Факт (Росстат/WDI)", color: "#62b4dc", description: "Рост реального ВВП России по данным Росстата в базе World Development Indicators."}
+  eurostat_hicp: {short: "Факт (Евростат)", color: "#62b4dc", description: "HICP еврозоны, среднегодовой темп (prc_hicp_aind)."}
+  eia_steo: {short: "EIA", color: "#ed7b24", description: "Ежемесячный прогноз Short-Term Energy Outlook. Годовые и квартальные значения — средние месяцев выпуска.", caveat: "Публикует только месячные значения."}
+  wb_cmo: {short: "Всемирный банк", color: "#168443", description: "Commodity Markets Outlook, выходит в апреле и октябре; годовые средние."}
+  ecb_mpd: {short: "ЕЦБ", color: "#245285", description: "Предпосылка по цене нефти в макропрогнозах Евросистемы и ЕЦБ (4 раза в год).", caveat: "Рыночная предпосылка по фьючерсам Brent, а не собственный прогноз."}
+  ecb_mpd_macro: {short: "ЕЦБ", color: "#245285", description: "Макропрогноз Евросистемы и ЕЦБ, 4 раза в год."}
+  boe_mpr: {short: "Банк Англии", color: "#9a4d8d", description: "Предпосылка Monetary Policy Report по фьючерсам Brent.", caveat: "Средняя за IV квартал года (в апреле 2026 — за II квартал), поэтому видна только на квартальной шкале."}
+  cbr_survey: {short: "Опрос аналитиков", color: "#b44343", description: "Макроэкономический опрос Банка России: медиана 30+ экономистов; полоса — 10–90-й процентили.", caveat: "Консенсус участников, а не прогноз Банка России."}
+  cbr_mtf: {short: "Банк России", color: "#173c68", description: "Среднесрочный прогноз Банка России по итогам опорных заседаний.", caveat: "Публикуется диапазоном: линия — середина, полоса — диапазон."}
+  imf_weo: {short: "МВФ", color: "#936728", description: "World Economic Outlook, апрель и октябрь. Через API доступны 2 последних выпуска."}
+  ecb_spf: {short: "Опрос SPF", color: "#7062bf", description: "Survey of Professional Forecasters ЕЦБ: среднее ожиданий участников, 4 раза в год."}
+
 groups:
   - {id: A, name: "Россия, годовые"}
   - {id: B, name: "Мир, годовые"}
@@ -29,7 +94,7 @@ indicators:
     base: "средняя за период, номинальная"
     groups: [C]
     precision: 2
-    actual_source: eia_brent_spot
+    actual_sources: {WORLD: eia_brent_spot}
     description: "Средняя спотовая цена нефти Brent за месяц, квартал или год."
   - id: gdp_growth
     name: "Рост реального ВВП"
@@ -38,6 +103,7 @@ indicators:
     base: "реальный ВВП, в среднем за год к предыдущему году"
     groups: [A, B]
     precision: 1
+    actual_sources: {RU: wb_wdi}
   - id: cpi_avg
     name: "Инфляция, в среднем за год"
     unit: "% к предыдущему году"
@@ -45,6 +111,7 @@ indicators:
     base: "средний за год индекс цен к предыдущему году; еврозона и страны ЕС, Великобритания — HICP, остальные — национальный ИПЦ"
     groups: [A, B]
     precision: 1
+    actual_sources: {EA: eurostat_hicp}
   - id: cpi_dec
     name: "Инфляция, декабрь к декабрю"
     unit: "% к декабрю предыдущего года"
@@ -52,7 +119,7 @@ indicators:
     base: "индекс цен на конец года к концу предыдущего года"
     groups: [A]
     precision: 1
-    actual_source: cbr_stats
+    actual_sources: {RU: cbr_stats}
   - id: unemployment_avg
     name: "Уровень безработицы, в среднем за год"
     unit: "% рабочей силы"
@@ -67,7 +134,7 @@ indicators:
     base: "в среднем за год с учётом выходных дней"
     groups: [A]
     precision: 1
-    actual_source: cbr_stats
+    actual_sources: {RU: cbr_stats}
   - id: exports_usd
     name: "Экспорт товаров и услуг"
     unit: "млрд долл. США в год"
@@ -154,3 +221,13 @@ series:
      note: "Данные Росстата, публикуемые Банком России"}
   - {source: cbr_stats, code: "KeyRateXML", indicator: key_rate_avg, area: RU,
      note: "Среднее по календарным дням; в выходные — последняя установленная ставка"}
+  # Bank of Russia medium-term forecast
+  - {source: cbr_mtf, code: "Инфляция, дек. к дек.", indicator: cpi_dec, area: RU, note: "Диапазон; линия — середина"}
+  - {source: cbr_mtf, code: "Инфляция, в среднем за год", indicator: cpi_avg, area: RU, note: "Диапазон; линия — середина"}
+  - {source: cbr_mtf, code: "Ключевая ставка, в среднем за год", indicator: key_rate_avg, area: RU, note: "Диапазон; линия — середина"}
+  - {source: cbr_mtf, code: "Валовой внутренний продукт", indicator: gdp_growth, area: RU, note: "Диапазон; линия — середина"}
+  # ECB SPF, euro area
+  - {source: ecb_spf, code: "HICP.POINT", indicator: cpi_avg, area: EA, note: "HICP; среднее ожиданий участников"}
+  # Reference actuals
+  - {source: eurostat_hicp, code: "prc_hicp_aind RCH_A_AVG", indicator: cpi_avg, area: EA}
+  - {source: wb_wdi, code: "NY.GDP.MKTP.KD.ZG", indicator: gdp_growth, area: RU}

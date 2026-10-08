@@ -10,7 +10,7 @@ from datetime import date, datetime
 from typing import Literal
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -23,14 +23,13 @@ from fdash.core import periods
 from fdash.core.models import benchmarks
 from fdash.store import db, queries
 
-app = FastAPI(title="Forecast dashboard API", version="0.1.0")
+app = FastAPI(title="Forecast dashboard API", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 _shared = None
 
@@ -45,8 +44,11 @@ def _con():
     return _shared.cursor()
 
 
-def _point(p: queries.SeriesPoint) -> dict:
-    return {"period": p.period, "value": p.value, "kind": p.kind, "lower": p.lower, "upper": p.upper}
+def _featured(cat: catalog_mod.Catalog, featured_id: str) -> catalog_mod.Featured:
+    item = next((f for f in cat.featured if f.id == featured_id), None)
+    if item is None:
+        raise HTTPException(404, "Показатель не найден")
+    return item
 
 
 @app.get("/api/health")
@@ -54,138 +56,67 @@ def health() -> dict:
     return {"status": "ok", "database": settings.DB_PATH.exists()}
 
 
-@app.get("/api/catalog")
-def catalog() -> dict:
+@app.get("/api/featured")
+def featured() -> dict:
     cat = catalog_mod.load()
     con = _con()
-    try:
-        cov = queries.coverage(con)
-        sources = {
-            r[0]: {"organization": r[1], "name": r[2], "role": r[3]}
-            for r in con.execute("SELECT source_id, organization, name, role FROM sources").fetchall()
-        }
-    finally:
-        con.close()
-    pairs = []
-    for ind in cat.indicators:
-        for area in cat.areas:
-            freqs = queries.frequencies_for(cov, ind.id, area.id)
-            if not freqs:
-                continue
-            has_actual = any(
-                r["indicator_id"] == ind.id and r["area_id"] == area.id and r["role"] == "actual" for r in cov
-            )
-            pairs.append(
-                {
-                    "indicator_id": ind.id,
-                    "area_id": area.id,
-                    "frequencies": {f: sorted(s) for f, s in sorted(freqs.items())},
-                    "source_count": len(set().union(*freqs.values())),
-                    "has_actual": has_actual,
-                }
-            )
+    cards = queries.featured_cards(con, cat)
+    sources = queries.sources_registry(con, cat)
+    last = con.execute(
+        """
+        SELECT r.title, r.vintage_date, r.source_id FROM releases r JOIN sources s USING (source_id)
+        WHERE s.role = 'forecast' ORDER BY r.vintage_date DESC, r.source_id LIMIT 30
+        """
+    ).fetchall()
+    feed, seen = [], set()
+    for title, vintage, source_id in last:
+        short = cat.source_info[source_id].short if source_id in cat.source_info else source_id
+        if (short, title) in seen:
+            continue
+        seen.add((short, title))
+        feed.append((title, vintage, source_id))
     return {
-        "groups": [g.model_dump() for g in cat.groups],
-        "areas": [a.model_dump() for a in cat.areas],
-        "indicators": [i.model_dump() for i in cat.indicators],
-        "pairs": pairs,
-        "sources": sources,
-        "notes": {f"{s.source}|{s.indicator}|{s.area}": s.note for s in cat.series if s.note},
-    }
-
-
-@app.get("/api/view")
-def view(
-    indicator: str,
-    area: str,
-    frequency: Literal["A", "Q", "M", "MY"],
-    mode: Literal["latest", "asof", "manual"] = "latest",
-    asof: date | None = None,
-    sources: str | None = Query(None, description="comma-separated source ids; default — all"),
-    releases: str | None = Query(None, description="comma-separated release ids for mode=manual"),
-    last_n: int = Query(1, ge=1, le=60, description="releases per source in latest/asof mode"),
-) -> dict:
-    cat = catalog_mod.load()
-    ind = cat.indicator(indicator)
-    if ind is None:
-        raise HTTPException(404, "Показатель не найден")
-    con = _con()
-    try:
-        cov = queries.coverage(con)
-        available = queries.frequencies_for(cov, indicator, area).get(frequency, set())
-        wanted = set(sources.split(",")) if sources else available
-        manual = set(releases.split(",")) if releases else set()
-        meta = {r[0]: r for r in con.execute("SELECT source_id, organization, name FROM sources").fetchall()}
-        out_sources = []
-        for source_id in sorted(available):
-            rows, derived = queries.releases_of(con, indicator, area, source_id, frequency)
-            chosen = queries.select_releases(rows, mode, asof, manual, last_n) if source_id in wanted else []
-            series = [
-                queries.release_series(con, r, indicator, area, source_id, frequency, derived) for r in chosen
-            ]
-            if derived and source_id in wanted and not any(s.points for s in series):
-                continue  # e.g. one quarter per year cannot be averaged into an annual value
-            out_sources.append(
-                {
-                    "source_id": source_id,
-                    "organization": meta[source_id][1],
-                    "name": meta[source_id][2],
-                    "note": next(
-                        (
-                            s.note
-                            for s in cat.series
-                            if s.source == source_id and s.indicator == indicator and s.area == area
-                        ),
-                        None,
-                    ),
-                    "derived_from": derived,
-                    "available_releases": [
-                        {"release_id": r[0], "title": r[1], "vintage_date": r[2]} for r in rows
-                    ],
-                    "releases": [
-                        {
-                            "release_id": s.release_id,
-                            "title": s.title,
-                            "vintage_date": s.vintage_date,
-                            "points": [_point(p) for p in s.points],
-                        }
-                        for s in series
-                    ],
-                }
-            )
-        actual = queries.actual_series(con, cat, indicator, area, frequency, asof if mode == "asof" else None)
-    finally:
-        con.close()
-    area_obj = next((a for a in cat.areas if a.id == area), None)
-    return {
-        "indicator": ind.model_dump(),
-        "area": area_obj.model_dump() if area_obj else {"id": area, "name": area},
-        "frequency": frequency,
-        "mode": mode,
-        "asof": asof,
-        "actual": None
-        if actual is None
-        else {
-            "source_id": actual.source_id,
-            "release_id": actual.release_id,
-            "title": actual.title,
-            "vintage_date": actual.vintage_date,
-            "derived_from": actual.derived_from,
-            "points": [_point(p) for p in actual.points],
+        "cards": cards,
+        "totals": {
+            "indicators": len(cards),
+            "sources": sum(1 for s in sources if s["role"] == "forecast"),
+            "releases": sum(s["releases"] for s in sources if s["role"] == "forecast"),
+            "last_update": max((c["last_update"] for c in cards if c["last_update"]), default=None),
         },
-        "sources": out_sources,
+        "latest_releases": [
+            {
+                "title": title,
+                "vintage_date": vintage,
+                "short": cat.source_info[s].short if s in cat.source_info else s,
+                "color": cat.source_info[s].color if s in cat.source_info else "#555",
+            }
+            for title, vintage, s in feed[:8]
+        ],
     }
 
 
-class ModelRequest(BaseModel):
-    indicator: str
-    area: str
-    frequency: Literal["A", "Q", "M"]
-    model: str
-    horizon: int = Field(8, ge=1, le=60)
-    cutoff: str | None = None
-    asof: date | None = None
-    params: dict = Field(default_factory=dict)
+@app.get("/api/series/{featured_id}")
+def series(featured_id: str, frequency: Literal["A", "Q", "M"] | None = None) -> dict:
+    cat = catalog_mod.load()
+    item = _featured(cat, featured_id)
+    freq = frequency or item.frequency
+    data = queries.pair_series(_con(), cat, item.indicator, item.area, freq)
+    if freq not in data["frequencies"]:
+        raise HTTPException(404, "Для этой частоты нет данных")
+    indicator = cat.indicator(item.indicator)
+    return {"featured": item.model_dump(), "indicator": indicator.model_dump(), "frequency": freq, **data}
+
+
+@app.get("/api/evaluation/{featured_id}")
+def evaluation(featured_id: str, frequency: Literal["A", "Q", "M"] | None = None) -> dict:
+    cat = catalog_mod.load()
+    item = _featured(cat, featured_id)
+    return queries.evaluation(_con(), cat, item.indicator, item.area, frequency or item.frequency)
+
+
+@app.get("/api/sources")
+def sources() -> list[dict]:
+    return queries.sources_registry(_con(), catalog_mod.load())
 
 
 @app.get("/api/models")
@@ -196,13 +127,29 @@ def models() -> list[dict]:
     ]
 
 
-def _cache_key(req: ModelRequest, actual_release: str, origin: str) -> str:
-    payload = json.dumps(
-        [req.model, req.params, req.indicator, req.area, req.frequency, origin, actual_release, req.horizon],
-        sort_keys=True,
-        default=str,
-    )
-    return hashlib.sha1(payload.encode()).hexdigest()[:16]
+class ModelRequest(BaseModel):
+    featured: str
+    frequency: Literal["A", "Q", "M"]
+    model: str
+    horizon: int = Field(4, ge=1, le=60)
+    cutoff: str | None = None
+    asof: date | None = None
+    params: dict = Field(default_factory=dict)
+
+
+def _training_series(cat, item, frequency: str, asof: date | None) -> tuple[str, list[tuple[str, float]]]:
+    """Actuals known at `asof`: the latest actual release published by then, else today's series cut."""
+    data = queries.pair_series(_con(), cat, item.indicator, item.area, frequency)
+    if not data["actual"]:
+        raise HTTPException(422, "Для показателя нет фактического ряда — модель не на чем обучать")
+    releases = data["actual"]["releases"]
+    known = [r for r in releases if asof is None or r["vintage_date"] <= asof]
+    release = known[-1] if known else releases[-1]
+    points = [(p["period"], p["value"]) for p in release["points"]]
+    if asof is not None:
+        last_known = periods.shift(queries.period_of(asof, frequency), -1)
+        points = [p for p in points if p[0] <= last_known]
+    return release["release_id"], points
 
 
 @app.post("/api/models/run")
@@ -210,72 +157,77 @@ def run_model(req: ModelRequest) -> dict:
     if req.model not in benchmarks.MODELS:
         raise HTTPException(404, "Неизвестная модель")
     cat = catalog_mod.load()
-    con = _con()
-    try:
-        actual = queries.actual_series(con, cat, req.indicator, req.area, req.frequency, req.asof)
-    finally:
-        con.close()
-    if actual is None or not actual.points:
-        raise HTTPException(422, "Для показателя нет фактического ряда — модель не на чем обучать")
-    points = [p for p in actual.points if not req.cutoff or p.period <= req.cutoff]
+    item = _featured(cat, req.featured)
+    actual_release, points = _training_series(cat, item, req.frequency, req.asof)
+    points = [p for p in points if not req.cutoff or p[0] <= req.cutoff]
     if not points:
         raise HTTPException(422, "До точки отсечения нет наблюдений")
-    origin = points[-1].period
-    run_id = _cache_key(req, actual.release_id, origin)
-    rw = _con()
-    try:
-        cached = rw.execute(
-            "SELECT target_period, value, lower80, upper80, lower95, upper95 FROM benchmark_forecasts "
-            "WHERE run_id = ? ORDER BY target_period",
-            [run_id],
-        ).fetchall()
-        info = {}
-        if not cached:
-            y = np.array([p.value for p in points])
-            m = periods.SEASON[req.frequency]
-            future = [periods.shift(origin, k) for k in range(1, req.horizon + 1)]
-            seasons = np.array(
-                [periods.season_index(p.period) for p in points] + [periods.season_index(p) for p in future]
+    origin = points[-1][0]
+    key = json.dumps(
+        [
+            req.model,
+            req.params,
+            item.indicator,
+            item.area,
+            req.frequency,
+            origin,
+            actual_release,
+            req.horizon,
+        ],
+        sort_keys=True,
+        default=str,
+    )
+    run_id = hashlib.sha1(key.encode()).hexdigest()[:16]
+    con = _con()
+    cached = con.execute(
+        "SELECT target_period, value, lower80, upper80, lower95, upper95 FROM benchmark_forecasts "
+        "WHERE run_id = ? ORDER BY target_period",
+        [run_id],
+    ).fetchall()
+    if cached:
+        params = con.execute("SELECT params FROM benchmark_runs WHERE run_id = ?", [run_id]).fetchone()
+        info = json.loads(params[0]).get("info", {}) if params else {}
+    else:
+        y = np.array([v for _, v in points])
+        m = periods.SEASON[req.frequency]
+        future = [periods.shift(origin, k) for k in range(1, req.horizon + 1)]
+        seasons = np.array(
+            [periods.season_index(p) for p, _ in points] + [periods.season_index(p) for p in future]
+        )
+        try:
+            fc = benchmarks.run(req.model, y, req.horizon, m, req.params, seasons)
+        except benchmarks.ModelUnavailable as exc:
+            raise HTTPException(422, str(exc)) from exc
+        info = fc.info
+        con.execute(
+            "INSERT OR IGNORE INTO benchmark_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                run_id,
+                req.model,
+                json.dumps({**req.params, "horizon": req.horizon, "info": info}, default=str),
+                item.indicator,
+                item.area,
+                req.frequency,
+                origin,
+                actual_release,
+                datetime.now(),
+            ],
+        )
+        cached = [
+            (
+                future[k],
+                float(fc.mean[k]),
+                float(fc.lo80[k]),
+                float(fc.hi80[k]),
+                float(fc.lo95[k]),
+                float(fc.hi95[k]),
             )
-            try:
-                fc = benchmarks.run(req.model, y, req.horizon, m, req.params, seasons)
-            except benchmarks.ModelUnavailable as exc:
-                raise HTTPException(422, str(exc)) from exc
-            info = fc.info
-            rw.execute(
-                "INSERT OR IGNORE INTO benchmark_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    run_id,
-                    req.model,
-                    json.dumps({**req.params, "horizon": req.horizon, "info": info}, default=str),
-                    req.indicator,
-                    req.area,
-                    req.frequency,
-                    origin,
-                    actual.release_id,
-                    datetime.now(),
-                ],
-            )
-            cached = [
-                (
-                    future[k],
-                    float(fc.mean[k]),
-                    float(fc.lo80[k]),
-                    float(fc.hi80[k]),
-                    float(fc.lo95[k]),
-                    float(fc.hi95[k]),
-                )
-                for k in range(req.horizon)
-            ]
-            rw.executemany(
-                "INSERT OR IGNORE INTO benchmark_forecasts VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [(run_id, *row) for row in cached],
-            )
-        else:
-            params = rw.execute("SELECT params FROM benchmark_runs WHERE run_id = ?", [run_id]).fetchone()
-            info = json.loads(params[0]).get("info", {}) if params else {}
-    finally:
-        rw.close()
+            for k in range(req.horizon)
+        ]
+        con.executemany(
+            "INSERT OR IGNORE INTO benchmark_forecasts VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(run_id, *row) for row in cached],
+        )
     spec = benchmarks.MODELS[req.model]
     return {
         "run_id": run_id,
@@ -283,7 +235,8 @@ def run_model(req: ModelRequest) -> dict:
         "name": spec.name,
         "description": spec.description,
         "origin": origin,
-        "actual_release": actual.release_id,
+        "anchor": points[-1][1],
+        "actual_release": actual_release,
         "info": info,
         "points": [
             {"period": p, "value": v, "lower80": l8, "upper80": u8, "lower95": l9, "upper95": u9}
@@ -329,11 +282,7 @@ def export(req: ExportRequest) -> Response:
 
 @app.get("/api/status")
 def status() -> dict:
-    con = _con()
-    try:
-        return queries.status(con)
-    finally:
-        con.close()
+    return queries.status(_con())
 
 
 if settings.WEB_DIST.exists():

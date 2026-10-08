@@ -1,76 +1,96 @@
-export type Frequency = "A" | "Q" | "M" | "MY";
+export type Frequency = "A" | "Q" | "M";
+export type AppView = "overview" | "indicator" | "sources" | "about";
+
+export interface Featured {
+  id: string;
+  indicator: string;
+  area: string;
+  frequency: Frequency;
+  category: string;
+  title: string;
+  short: string;
+  subtitle?: string | null;
+  description: string;
+}
 
 export interface Indicator {
   id: string;
   name: string;
   unit: string;
-  transform: string;
   base?: string | null;
-  groups: string[];
   description?: string | null;
   precision: number;
-  actual_source?: string | null;
-}
-
-export interface Area { id: string; name: string; kind: string }
-export interface Group { id: string; name: string }
-
-export interface Pair {
-  indicator_id: string;
-  area_id: string;
-  frequencies: Record<string, string[]>;
-  source_count: number;
-  has_actual: boolean;
-}
-
-export interface Catalog {
-  groups: Group[];
-  areas: Area[];
-  indicators: Indicator[];
-  pairs: Pair[];
-  sources: Record<string, { organization: string; name: string; role: string }>;
-  notes: Record<string, string>;
 }
 
 export interface Point {
   period: string;
   value: number;
-  kind: "forecast" | "estimate" | "actual";
+  kind?: "forecast" | "estimate" | "actual";
   lower?: number | null;
   upper?: number | null;
 }
 
-export interface ReleaseRef { release_id: string; title: string; vintage_date: string }
-export interface ReleaseData extends ReleaseRef { points: Point[] }
+export interface Release {
+  release_id: string;
+  title: string;
+  vintage_date: string;
+  points: Point[];
+}
 
-export interface SourceView {
+export interface SourceMeta {
   source_id: string;
   organization: string;
   name: string;
-  note?: string | null;
-  derived_from?: string | null;
-  available_releases: ReleaseRef[];
-  releases: ReleaseData[];
+  url: string;
+  short: string;
+  color: string;
+  description?: string | null;
+  caveat?: string | null;
 }
 
-export interface View {
+export interface SourceSeries extends SourceMeta {
+  note?: string | null;
+  derived_from?: string | null;
+  releases: Release[];
+}
+
+export interface SeriesResponse {
+  featured: Featured;
   indicator: Indicator;
-  area: Area;
   frequency: Frequency;
-  actual: (ReleaseData & { source_id: string; derived_from?: string | null }) | null;
-  sources: SourceView[];
+  frequencies: Frequency[];
+  actual: (SourceMeta & { derived_from?: string | null; releases: Release[] }) | null;
+  sources: SourceSeries[];
+}
+
+export interface Card extends Featured {
+  unit: string;
+  precision: number;
+  fact_source: string | null;
+  last_fact: { period: string; value: number } | null;
+  sparkline: { period: string; value: number }[];
+  targets: string[];
+  latest: {
+    source_id: string;
+    short: string;
+    color: string;
+    release_title: string;
+    vintage_date: string;
+    values: Record<string, Point | null>;
+  }[];
+  source_count: number;
+  release_count: number;
+  last_update: string | null;
+  frequencies: Frequency[];
+}
+
+export interface Overview {
+  cards: Card[];
+  totals: { indicators: number; sources: number; releases: number; last_update: string | null };
+  latest_releases: { title: string; vintage_date: string; short: string; color: string }[];
 }
 
 export interface ModelSpec { code: string; name: string; description: string; params: Record<string, unknown> }
-
-export interface ModelPoint {
-  period: string;
-  value: number;
-  lower80: number;
-  upper80: number;
-  lower95: number;
-  upper95: number;
-}
 
 export interface ModelRun {
   run_id: string;
@@ -78,17 +98,38 @@ export interface ModelRun {
   name: string;
   description: string;
   origin: string;
+  anchor: number;
   info: Record<string, unknown>;
-  points: ModelPoint[];
+  points: { period: string; value: number; lower80: number; upper80: number; lower95: number; upper95: number }[];
 }
 
-export interface StatusData {
+export interface Evaluation {
+  actual: { source_id: string; short: string } | null;
   sources: {
-    source_id: string; organization: string; name: string; role: string; url: string; license: string;
-    releases: number; first_vintage: string | null; last_vintage: string | null;
+    source_id: string;
+    short: string;
+    color: string;
+    organization: string;
+    name: string;
+    horizons: { horizon: number; n: number; mae: number; bias: number }[];
+    releases: {
+      release_id: string;
+      title: string;
+      vintage_date: string;
+      mae: number;
+      rmse: number;
+      bias: number;
+      points: { period: string; forecast: number; actual: number; error: number; horizon: number }[];
+    }[];
   }[];
-  log: {
-    source_id: string; started_at: string; finished_at: string | null; status: string;
-    releases: number | null; rows_added: number | null; error: string | null;
-  }[];
+}
+
+export interface RegistrySource extends SourceMeta {
+  role: "forecast" | "actual";
+  license: string;
+  access: string;
+  releases: number;
+  first_vintage: string | null;
+  last_vintage: string | null;
+  indicators: string[];
 }

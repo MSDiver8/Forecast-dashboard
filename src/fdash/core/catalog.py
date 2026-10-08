@@ -31,7 +31,10 @@ class Indicator(BaseModel):
     groups: list[str]
     description: str | None = None
     precision: int = 1
-    actual_source: str | None = None
+    actual_sources: dict[str, str] = {}
+
+    def actual_source(self, area_id: str) -> str | None:
+        return self.actual_sources.get(area_id) or self.actual_sources.get("*")
 
 
 class Series(BaseModel):
@@ -42,7 +45,28 @@ class Series(BaseModel):
     note: str | None = None
 
 
+class Featured(BaseModel):
+    id: str
+    indicator: str
+    area: str
+    frequency: str = "A"
+    category: str
+    title: str
+    short: str
+    subtitle: str | None = None
+    description: str
+
+
+class SourceInfo(BaseModel):
+    short: str
+    color: str
+    description: str
+    caveat: str | None = None
+
+
 class Catalog(BaseModel):
+    featured: list[Featured] = []
+    source_info: dict[str, SourceInfo] = {}
     groups: list[Group]
     areas: list[Area]
     indicators: list[Indicator]
@@ -63,6 +87,9 @@ def load(path: Path | None = None) -> Catalog:
     for s in catalog.series:
         if s.indicator not in ids or s.area not in areas:
             raise ValueError(f"Unknown indicator or area in series: {s}")
+    for f in catalog.featured:
+        if f.indicator not in ids or f.area not in areas:
+            raise ValueError(f"Unknown indicator or area in featured: {f.id}")
     return catalog
 
 

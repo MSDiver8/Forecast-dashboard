@@ -1,11 +1,11 @@
-import type { Catalog, Frequency, ModelRun, ModelSpec, StatusData, View } from "./types";
+import type { Evaluation, Frequency, ModelRun, ModelSpec, Overview, RegistrySource, SeriesResponse } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
     try {
-      const body = await response.json();
+      const body = (await response.json()) as { detail?: unknown };
       if (body.detail) message = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
     } catch { /* not JSON */ }
     throw new Error(message);
@@ -13,31 +13,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export interface ViewQuery {
-  indicator: string;
-  area: string;
-  frequency: Frequency;
-  mode: "latest" | "asof" | "manual";
-  asof?: string;
-  sources?: string[];
-  releases?: string[];
-  lastN?: number;
-}
-
 export const api = {
-  catalog: () => request<Catalog>("/api/catalog"),
+  health: () => request<{ status: string }>("/api/health"),
+  overview: () => request<Overview>("/api/featured"),
+  series: (id: string, frequency?: Frequency) =>
+    request<SeriesResponse>(`/api/series/${id}${frequency ? `?frequency=${frequency}` : ""}`),
+  evaluation: (id: string, frequency: Frequency) => request<Evaluation>(`/api/evaluation/${id}?frequency=${frequency}`),
+  sources: () => request<RegistrySource[]>("/api/sources"),
   models: () => request<ModelSpec[]>("/api/models"),
-  status: () => request<StatusData>("/api/status"),
-  view: (q: ViewQuery) => {
-    const params = new URLSearchParams({ indicator: q.indicator, area: q.area, frequency: q.frequency, mode: q.mode });
-    if (q.asof) params.set("asof", q.asof);
-    if (q.sources) params.set("sources", q.sources.join(","));
-    if (q.releases?.length) params.set("releases", q.releases.join(","));
-    if (q.lastN) params.set("last_n", String(q.lastN));
-    return request<View>(`/api/view?${params}`);
-  },
   runModel: (body: {
-    indicator: string; area: string; frequency: Frequency; model: string; horizon: number;
+    featured: string; frequency: Frequency; model: string; horizon: number;
     cutoff?: string; asof?: string; params?: Record<string, unknown>;
   }) => request<ModelRun>("/api/models/run", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),

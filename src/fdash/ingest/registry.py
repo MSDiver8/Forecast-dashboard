@@ -13,6 +13,10 @@ MODULES = [
     "cbr_survey",
     "imf_weo",
     "cbr_stats",
+    "cbr_mtf",
+    "ecb_spf",
+    "eurostat_hicp",
+    "wb_wdi",
 ]
 
 CONNECTORS: dict[str, Connector] = {}

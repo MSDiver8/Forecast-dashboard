@@ -12,6 +12,7 @@ from fdash.core import periods
 from fdash.core.catalog import Catalog
 
 DERIVABLE = {"A": ("M", "Q"), "Q": ("M",)}
+STALE_DAYS = 365
 
 
 @dataclass
@@ -148,7 +149,7 @@ def actual_series(
 ) -> ReleaseSeries | None:
     """Reference actuals: the latest release of the actual source known at `asof`."""
     indicator = catalog.indicator(indicator_id)
-    source_id = indicator.actual_source if indicator else None
+    source_id = indicator.actual_source(area_id) if indicator else None
     if not source_id:
         return None
     rows, derived = releases_of(con, indicator_id, area_id, source_id, frequency)
@@ -195,3 +196,239 @@ def status(con) -> dict:
             for s, st, fi, stt, r, ra, e in log
         ],
     }
+
+
+def _source_meta(con, catalog: Catalog, source_id: str) -> dict:
+    org, name, url = con.execute(
+        "SELECT organization, name, url FROM sources WHERE source_id = ?", [source_id]
+    ).fetchone()
+    info = catalog.source_info.get(source_id)
+    return {
+        "source_id": source_id,
+        "organization": org,
+        "name": name,
+        "url": url,
+        "short": info.short if info else org,
+        "color": info.color if info else "#555555",
+        "description": info.description if info else None,
+        "caveat": info.caveat if info else None,
+    }
+
+
+def _point_dict(p: SeriesPoint) -> dict:
+    return {"period": p.period, "value": p.value, "kind": p.kind, "lower": p.lower, "upper": p.upper}
+
+
+def pair_series(con, catalog: Catalog, indicator_id: str, area_id: str, frequency: str) -> dict:
+    """Every release of every forecast source for one indicator, area and frequency, plus actuals."""
+    cov = coverage(con)
+    usable = frequencies_for(cov, indicator_id, area_id)
+    sources = []
+    for source_id in sorted(usable.get(frequency, set())):
+        rows, derived = releases_of(con, indicator_id, area_id, source_id, frequency)
+        releases = []
+        for row in rows:
+            series = release_series(con, row, indicator_id, area_id, source_id, frequency, derived)
+            if series.points:
+                releases.append(
+                    {
+                        "release_id": series.release_id,
+                        "title": series.title,
+                        "vintage_date": series.vintage_date,
+                        "points": [_point_dict(p) for p in series.points],
+                    }
+                )
+        if not releases:
+            continue  # e.g. one quarter a year cannot be averaged into an annual value
+        note = next(
+            (
+                s.note
+                for s in catalog.series
+                if (s.source, s.indicator, s.area) == (source_id, indicator_id, area_id)
+            ),
+            None,
+        )
+        sources.append(
+            {
+                **_source_meta(con, catalog, source_id),
+                "note": note,
+                "derived_from": derived,
+                "releases": releases,
+            }
+        )
+    actual = None
+    indicator = catalog.indicator(indicator_id)
+    actual_source = indicator.actual_source(area_id) if indicator else None
+    if actual_source:
+        rows, derived = releases_of(con, indicator_id, area_id, actual_source, frequency)
+        actual_releases = []
+        for row in rows:
+            series = release_series(con, row, indicator_id, area_id, actual_source, frequency, derived)
+            actual_releases.append(
+                {
+                    "release_id": series.release_id,
+                    "title": series.title,
+                    "vintage_date": series.vintage_date,
+                    "points": [
+                        {"period": p.period, "value": p.value} for p in series.points if p.kind == "actual"
+                    ],
+                }
+            )
+        if actual_releases:
+            actual = {
+                **_source_meta(con, catalog, actual_source),
+                "derived_from": derived,
+                "releases": actual_releases,
+            }
+    freqs = [f for f in ("A", "Q", "M") if usable.get(f)]
+    return {"frequencies": freqs, "actual": actual, "sources": sources}
+
+
+def featured_cards(con, catalog: Catalog) -> list[dict]:
+    """Start page cards: latest fact, latest forecasts for the next periods, coverage."""
+    cards = []
+    for f in catalog.featured:
+        indicator = catalog.indicator(f.indicator)
+        data = pair_series(con, catalog, f.indicator, f.area, f.frequency)
+        fact_points = data["actual"]["releases"][-1]["points"] if data["actual"] else []
+        last_fact = fact_points[-1] if fact_points else None
+        targets = []
+        if last_fact:
+            targets = [periods.shift(last_fact["period"], k) for k in (1, 2)]
+        newest = max((src["releases"][-1]["vintage_date"] for src in data["sources"]), default=None)
+        latest = []
+        for source in data["sources"]:
+            release = source["releases"][-1]
+            if newest and (newest - release["vintage_date"]).days > STALE_DAYS:
+                continue  # the source stopped publishing this forecast; shown only on request
+            values = {p["period"]: p for p in release["points"]}
+            latest.append(
+                {
+                    "source_id": source["source_id"],
+                    "short": source["short"],
+                    "color": source["color"],
+                    "release_title": release["title"],
+                    "vintage_date": release["vintage_date"],
+                    "values": {t: values.get(t) for t in targets},
+                }
+            )
+        all_vintages = [r["vintage_date"] for s in data["sources"] for r in s["releases"]]
+        cards.append(
+            {
+                **f.model_dump(),
+                "unit": indicator.unit,
+                "precision": indicator.precision,
+                "fact_source": data["actual"]["short"] if data["actual"] else None,
+                "last_fact": last_fact,
+                "sparkline": fact_points[-12:],
+                "targets": targets,
+                "latest": latest,
+                "source_count": len(data["sources"]),
+                "release_count": len(all_vintages),
+                "last_update": max(all_vintages) if all_vintages else None,
+                "frequencies": data["frequencies"],
+            }
+        )
+    return cards
+
+
+def evaluation(con, catalog: Catalog, indicator_id: str, area_id: str, frequency: str) -> dict:
+    """Errors of published forecasts against the latest actuals, by release and by horizon."""
+    data = pair_series(con, catalog, indicator_id, area_id, frequency)
+    if not data["actual"]:
+        return {"actual": None, "sources": []}
+    fact = {p["period"]: p["value"] for p in data["actual"]["releases"][-1]["points"]}
+    out = []
+    for source in data["sources"]:
+        releases, by_horizon = [], defaultdict(list)
+        for release in source["releases"]:
+            vintage_period = period_of(release["vintage_date"], frequency)
+            errors = []
+            for p in release["points"]:
+                if p["kind"] != "forecast" or p["period"] not in fact:
+                    continue
+                error = p["value"] - fact[p["period"]]
+                horizon = _steps_between(vintage_period, p["period"])
+                errors.append(
+                    {
+                        "period": p["period"],
+                        "forecast": p["value"],
+                        "actual": fact[p["period"]],
+                        "error": error,
+                        "horizon": horizon,
+                    }
+                )
+                by_horizon[horizon].append(error)
+            if errors:
+                abs_errors = [abs(e["error"]) for e in errors]
+                releases.append(
+                    {
+                        "release_id": release["release_id"],
+                        "title": release["title"],
+                        "vintage_date": release["vintage_date"],
+                        "points": errors,
+                        "mae": sum(abs_errors) / len(abs_errors),
+                        "rmse": (sum(e["error"] ** 2 for e in errors) / len(errors)) ** 0.5,
+                        "bias": sum(e["error"] for e in errors) / len(errors),
+                    }
+                )
+        horizons = [
+            {"horizon": h, "n": len(v), "mae": sum(abs(e) for e in v) / len(v), "bias": sum(v) / len(v)}
+            for h, v in sorted(by_horizon.items())
+        ]
+        out.append(
+            {
+                **{k: source[k] for k in ("source_id", "short", "color", "organization", "name")},
+                "releases": releases,
+                "horizons": horizons,
+            }
+        )
+    return {"actual": {k: data["actual"][k] for k in ("source_id", "short")}, "sources": out}
+
+
+def period_of(day: date, frequency: str) -> str:
+    if frequency == "M":
+        return f"{day.year:04d}-{day.month:02d}"
+    if frequency == "Q":
+        return f"{day.year:04d}-Q{(day.month - 1) // 3 + 1}"
+    return f"{day.year:04d}"
+
+
+def _steps_between(start: str, end: str) -> int:
+    for k in range(-5, 400):
+        if periods.shift(start, k) == end:
+            return k
+    return 0
+
+
+def sources_registry(con, catalog: Catalog) -> list[dict]:
+    rows = con.execute(
+        """
+        SELECT s.source_id, s.role, s.license, s.access, count(r.release_id),
+               min(r.vintage_date), max(r.vintage_date)
+        FROM sources s LEFT JOIN releases r USING (source_id)
+        GROUP BY ALL
+        """
+    ).fetchall()
+    titles = {}
+    for f in catalog.featured:
+        for s in catalog.series:
+            if (s.indicator, s.area) == (f.indicator, f.area):
+                titles.setdefault(s.source, []).append(f.title)
+    result = []
+    for source_id, role, lic, access, count, first, last in rows:
+        if source_id not in titles:
+            continue  # only sources behind the curated indicators
+        result.append(
+            {
+                **_source_meta(con, catalog, source_id),
+                "role": role,
+                "license": lic,
+                "access": access,
+                "releases": count,
+                "first_vintage": first,
+                "last_vintage": last,
+                "indicators": sorted(set(titles[source_id])),
+            }
+        )
+    return sorted(result, key=lambda r: (r["role"] != "forecast", r["short"]))

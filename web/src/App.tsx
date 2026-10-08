@@ -1,79 +1,83 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
-import { CatalogView } from "./components/CatalogView";
-import { Comparison, type Selection } from "./components/Comparison";
-import { Header } from "./components/Header";
-import { StatusView } from "./components/StatusView";
+import "./App.css";
+import { AboutView } from "./components/AboutView";
+import { IndicatorOverview } from "./components/IndicatorOverview";
+import { IndicatorWorkspace } from "./components/IndicatorWorkspace";
+import { PortalHeader } from "./components/PortalHeader";
+import { SourcesView } from "./components/SourcesView";
 import { t } from "./i18n";
-import type { Catalog } from "./types";
+import type { AppView, Overview } from "./types";
 
-type Tab = "compare" | "catalog" | "status";
-
-function selectionFromHash(catalog: Catalog): Selection | null {
+function readHash(): { view: AppView; id: string | null } {
   const params = new URLSearchParams(window.location.hash.slice(1));
-  const pair = catalog.pairs.find((p) => p.indicator_id === params.get("indicator") && p.area_id === params.get("area"));
-  if (!pair) return null;
-  const freq = params.get("freq") ?? "";
-  const freqs = Object.keys(pair.frequencies);
-  return { indicator: pair.indicator_id, area: pair.area_id, frequency: (freqs.includes(freq) ? freq : freqs[0]) as Selection["frequency"] };
-}
-
-function initialSelection(catalog: Catalog): Selection {
-  const fromHash = selectionFromHash(catalog);
-  if (fromHash) return fromHash;
-  const brent = catalog.pairs.find((p) => p.indicator_id === "brent_price");
-  const pair = brent ?? catalog.pairs[0];
-  const freqs = Object.keys(pair.frequencies);
-  return { indicator: pair.indicator_id, area: pair.area_id, frequency: (freqs.includes("A") ? "A" : freqs[0]) as Selection["frequency"] };
+  const view = (params.get("view") as AppView) || "overview";
+  return { view, id: params.get("id") };
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("compare");
-  const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [selection, setSelection] = useState<Selection | null>(null);
+  const initial = readHash();
+  const [view, setView] = useState<AppView>(initial.view);
+  const [indicatorId, setIndicatorId] = useState<string | null>(initial.id);
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [online, setOnline] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (selection) {
-      window.history.replaceState(null, "", `#indicator=${selection.indicator}&area=${selection.area}&freq=${selection.frequency}`);
+  async function load() {
+    setError("");
+    try {
+      const [health, data] = await Promise.all([api.health(), api.overview()]);
+      setOnline(health.status === "ok");
+      setOverview(data);
+    } catch (e) {
+      setOnline(false);
+      setError((e as Error).message);
     }
-  }, [selection]);
+  }
+
+  useEffect(() => { void load(); }, []);
 
   useEffect(() => {
-    api.catalog()
-      .then((c) => { setCatalog(c); setSelection(initialSelection(c)); })
-      .catch((e: Error) => setError(e.message));
-  }, []);
+    const params = new URLSearchParams({ view });
+    if (view === "indicator" && indicatorId) params.set("id", indicatorId);
+    window.history.replaceState(null, "", `#${params}`);
+  }, [view, indicatorId]);
+
+  function navigate(next: AppView) {
+    setView(next === "indicator" && !indicatorId ? "overview" : next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function openIndicator(id: string) {
+    setIndicatorId(id);
+    setView("indicator");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  let content;
+  if (error && !overview) {
+    content = <main className="page-shell"><div className="error-panel"><p className="eyebrow">{t("common.error")}</p><p>{error}</p>
+      <button className="button button--primary" type="button" onClick={() => void load()}>{t("common.retry")}</button></div></main>;
+  } else if (!overview) {
+    content = <main className="page-shell"><div className="loading-panel"><span className="loading-spinner" />{t("common.loading")}</div></main>;
+  } else if (view === "indicator" && indicatorId && overview.cards.some((c) => c.id === indicatorId)) {
+    content = <IndicatorWorkspace key={indicatorId} id={indicatorId} featured={overview.cards} onSelect={openIndicator} onBack={() => navigate("overview")} />;
+  } else if (view === "sources") {
+    content = <SourcesView />;
+  } else if (view === "about") {
+    content = <AboutView />;
+  } else {
+    content = <IndicatorOverview overview={overview} onOpenIndicator={openIndicator} onOpenSources={() => navigate("sources")} />;
+  }
 
   return (
-    <>
-      <Header />
-      <div className="product-bar">
-        <div className="product-bar__inner">
-          <div className="product-title">
-            <h1>{t("app.title")}</h1>
-            <p>{t("app.subtitle")}</p>
-          </div>
-          <nav className="product-tabs">
-            {(["compare", "catalog", "status"] as Tab[]).map((key) => (
-              <button key={key} type="button" className={tab === key ? "is-active" : ""} onClick={() => setTab(key)}>
-                {t(`tab.${key}`)}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </div>
-      <main className="page">
-        {error && <p className="error">{t("common.error")}: {error}</p>}
-        {!catalog && !error && <p className="muted">{t("common.loading")}</p>}
-        {catalog && selection && tab === "compare" && (
-          <Comparison catalog={catalog} selection={selection} onSelect={setSelection} />
-        )}
-        {catalog && tab === "catalog" && (
-          <CatalogView catalog={catalog} onOpen={(s) => { setSelection(s); setTab("compare"); }} />
-        )}
-        {tab === "status" && <StatusView />}
-      </main>
-    </>
+    <div className="app">
+      <PortalHeader activeView={view} online={online} hasIndicator={Boolean(indicatorId)} onNavigate={navigate} />
+      {content}
+      <footer className="app-footer">
+        <div><strong>{t("app.org")}</strong><span>{t("app.footer")}</span></div>
+        <span>© 2023–2026 НЦСЭД</span>
+      </footer>
+    </div>
   );
 }
