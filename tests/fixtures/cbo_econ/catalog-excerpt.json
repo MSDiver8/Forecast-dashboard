@@ -1,0 +1,180 @@
+{
+ "@context": "https://project-open-data.cio.gov/v1.1/schema/catalog.jsonld",
+ "@type": "dcat:Catalog",
+ "title": "CBO Open Data Repository",
+ "description": "Machine-readable, tidy versions of CBO's Budget and Economic Data. Primary audience: AI agents and automated systems.",
+ "publisher": {
+  "@type": "org:Organization",
+  "name": "Congressional Budget Office",
+  "subOrganizationOf": {
+   "name": "United States Congress"
+  }
+ },
+ "generated": "2026-05-14T19:49:19Z",
+ "datasets": [
+  {
+   "@type": "dcat:Dataset",
+   "identifier": "economic_projections",
+   "title": "Economic Projections",
+   "description": "Projections of output, prices, labor market measures, interest rates, and income.",
+   "publisher": {
+    "name": "Congressional Budget Office"
+   },
+   "contactPoint": {
+    "fn": "CBO",
+    "hasURL": "https://www.cbo.gov/publication/51135"
+   },
+   "accessLevel": "public",
+   "landingPage": "https://www.cbo.gov/publication/51135",
+   "publication_id": "51135",
+   "frequency": "quarterly",
+   "field_count": 148,
+   "schema_path": "data/economic/economic_projections/schema.json",
+   "vintages": [
+    "2026-02",
+    "2025-09",
+    "2025-01",
+    "2024-06",
+    "2024-02"
+   ],
+   "distribution": [
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "calendar_2024-02.csv",
+     "downloadURL": "data/economic/economic_projections/calendar_2024-02.csv",
+     "vintage": "2024-02",
+     "file_type": "calendar"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "calendar_2024-06.csv",
+     "downloadURL": "data/economic/economic_projections/calendar_2024-06.csv",
+     "vintage": "2024-06",
+     "file_type": "calendar"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "calendar_2025-01.csv",
+     "downloadURL": "data/economic/economic_projections/calendar_2025-01.csv",
+     "vintage": "2025-01",
+     "file_type": "calendar"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "calendar_2025-09.csv",
+     "downloadURL": "data/economic/economic_projections/calendar_2025-09.csv",
+     "vintage": "2025-09",
+     "file_type": "calendar"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "calendar_2026-02.csv",
+     "downloadURL": "data/economic/economic_projections/calendar_2026-02.csv",
+     "vintage": "2026-02",
+     "file_type": "calendar"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "fiscal_2024-02.csv",
+     "downloadURL": "data/economic/economic_projections/fiscal_2024-02.csv",
+     "vintage": "2024-02",
+     "file_type": "fiscal"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "fiscal_2024-06.csv",
+     "downloadURL": "data/economic/economic_projections/fiscal_2024-06.csv",
+     "vintage": "2024-06",
+     "file_type": "fiscal"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "fiscal_2025-01.csv",
+     "downloadURL": "data/economic/economic_projections/fiscal_2025-01.csv",
+     "vintage": "2025-01",
+     "file_type": "fiscal"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "fiscal_2025-09.csv",
+     "downloadURL": "data/economic/economic_projections/fiscal_2025-09.csv",
+     "vintage": "2025-09",
+     "file_type": "fiscal"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "fiscal_2026-02.csv",
+     "downloadURL": "data/economic/economic_projections/fiscal_2026-02.csv",
+     "vintage": "2026-02",
+     "file_type": "fiscal"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "quarterly_2024-02.csv",
+     "downloadURL": "data/economic/economic_projections/quarterly_2024-02.csv",
+     "vintage": "2024-02",
+     "file_type": "quarterly"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "quarterly_2024-06.csv",
+     "downloadURL": "data/economic/economic_projections/quarterly_2024-06.csv",
+     "vintage": "2024-06",
+     "file_type": "quarterly"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "quarterly_2025-01.csv",
+     "downloadURL": "data/economic/economic_projections/quarterly_2025-01.csv",
+     "vintage": "2025-01",
+     "file_type": "quarterly"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "quarterly_2025-09.csv",
+     "downloadURL": "data/economic/economic_projections/quarterly_2025-09.csv",
+     "vintage": "2025-09",
+     "file_type": "quarterly"
+    },
+    {
+     "@type": "dcat:Distribution",
+     "mediaType": "text/csv",
+     "format": "CSV",
+     "title": "quarterly_2026-02.csv",
+     "downloadURL": "data/economic/economic_projections/quarterly_2026-02.csv",
+     "vintage": "2026-02",
+     "file_type": "quarterly"
+    }
+   ],
+   "temporal": "2021-01-01/2036-12-31"
+  }
+ ]
+}

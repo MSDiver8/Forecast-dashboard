@@ -41,6 +41,36 @@ featured:
     short: "ВВП РФ"
     subtitle: "реальный ВВП к предыдущему году"
     description: "Темп роста реального ВВП, % к предыдущему году. Прогноз Банка России, консенсус аналитиков и МВФ."
+  - id: us-gdp
+    indicator: gdp_qoq_saar
+    area: US
+    frequency: Q
+    category: "США · экономика"
+    title: "Реальный ВВП США"
+    short: "ВВП США"
+    subtitle: "рост к предыдущему кварталу в годовом выражении (SAAR)"
+    description: "Рост реального ВВП, квартал к кварталу в годовом выражении (SAAR). Бюджетное управление Конгресса (CBO), опрос профессиональных прогнозистов ФРБ Филадельфии, Fannie Mae и TD Economics."
+    added: 2026-10-13
+  - id: uk-cpi
+    indicator: cpi_yoy_q
+    area: GB
+    frequency: Q
+    category: "Великобритания · цены"
+    title: "Инфляция в Великобритании"
+    short: "Инфляция ВБ"
+    subtitle: "CPI, к тому же кварталу прошлого года"
+    description: "CPI, рост к тому же кварталу прошлого года. Банк Англии (выпуски с 2004 года) и Управление бюджетной ответственности (OBR)."
+    added: 2026-10-13
+  - id: uk-gdp
+    indicator: gdp_yoy_q
+    area: GB
+    frequency: Q
+    category: "Великобритания · экономика"
+    title: "Реальный ВВП Великобритании"
+    short: "ВВП ВБ"
+    subtitle: "рост к тому же кварталу прошлого года"
+    description: "Рост реального ВВП к тому же кварталу прошлого года. Банк Англии (выпуски с 2007 года) и OBR."
+    added: 2026-10-13
   - id: ea-inflation
     indicator: cpi_avg
     area: EA
@@ -50,6 +80,15 @@ featured:
     short: "Инфляция ЕЗ"
     subtitle: "HICP, в среднем за год к предыдущему году; еврозона в меняющемся составе"
     description: "Гармонизированный индекс потребительских цен (HICP), % в среднем за год. Прогноз ЕЦБ, опрос профессиональных прогнозистов SPF и МВФ."
+
+# Start page announcement: the indicator, a short text and the sources whose newest release is drawn.
+news:
+  featured: uk-cpi
+  published: 2026-10-13
+  text: "Добавлены прогнозы Банка Англии и Управления бюджетной ответственности (OBR). Прогноз Банка Англии от июля 2026 года предполагает повышение инфляции до 3,2% в IV квартале 2026 года, прогноз OBR от марта 2026 года — снижение до 2,1% во II квартале 2026 года."
+  sources: [boe_mpr_uk, obr_efo]
+  start: "2024-Q1"
+  end: "2028-Q4"
 
 # How sources are named and coloured in the dashboard, with what a user must know about them.
 source_info:
@@ -65,6 +104,15 @@ source_info:
   cbr_survey: {short: "Опрос аналитиков", color: "#b44343", description: "Макроэкономический опрос Банка России: медиана 30+ экономистов; полоса — 10–90-й процентили.", caveat: "Консенсус участников, а не прогноз Банка России."}
   cbr_mtf: {short: "Банк России", color: "#173c68", description: "Среднесрочный прогноз Банка России по итогам опорных заседаний.", caveat: "Публикуется диапазоном: линия — середина, полоса — диапазон."}
   imf_weo: {short: "МВФ", color: "#936728", description: "World Economic Outlook, апрель и октябрь. Через API доступны 2 последних выпуска."}
+  bea_nipa: {short: "Факт (BEA)", color: "#62b4dc", description: "Рост реального ВВП США к предыдущему кварталу в годовом выражении: NIPA, таблица 1.1.1, ряд A191RL."}
+  ons_cpi: {short: "Факт (ONS)", color: "#62b4dc", description: "Годовой темп CPI, квартальные значения ряда D7G7."}
+  ons_gdp: {short: "Факт (ONS)", color: "#62b4dc", description: "Рост реального ВВП к тому же кварталу прошлого года, ряд IHYR; берётся последний из выпусков PN2 (первая оценка) и QNA."}
+  boe_mpr_uk: {short: "Банк Англии", color: "#9a4d8d", description: "Центральный прогноз MPC в Monetary Policy Report (до ноября 2019 года — Inflation Report), 4 раза в год; история всех докладов из Projections Databank.", caveat: "До ноября 2025 года известен только месяц доклада. В апреле 2026 года центральный прогноз не публиковался."}
+  obr_efo: {short: "OBR", color: "#2f7d6d", description: "Управление бюджетной ответственности: Economic and fiscal outlook, детальные таблицы по экономике, 2 раза в год."}
+  cbo_econ: {short: "CBO", color: "#7a3e9d", description: "Бюджетное управление Конгресса США: экономические прогнозы на 10 лет, 1–2 раза в год.", caveat: "Известен только месяц выпуска."}
+  spf_philly: {short: "Опрос SPF (ФРБ Филадельфии)", color: "#c4572a", description: "Survey of Professional Forecasters ФРБ Филадельфии, ежеквартально: прогноз на квартал опроса и четыре следующих квартала.", caveat: "Темп роста медианного прогноза уровня ВВП, а не медиана прогнозов темпа."}
+  fannie_mae: {short: "Fannie Mae", color: "#0e7c86", description: "Ежемесячный прогноз группы Economic & Strategic Research.", caveat: "Значения прочитаны из PDF; прогнозные кварталы отмечены в источнике заливкой."}
+  td_economics: {short: "TD Economics", color: "#4d8b31", description: "Quarterly Economic Forecast, 4 раза в год.", caveat: "Значения прочитаны из PDF. Выпуски до декабря 2025 года содержат таблицу в виде изображения и не загружены."}
   ecb_spf: {short: "Опрос SPF", color: "#7062bf", description: "Survey of Professional Forecasters ЕЦБ: среднее ожиданий участников, 4 раза в год."}
 
 groups:
@@ -72,6 +120,7 @@ groups:
   - {id: B, name: "Мир, годовые"}
   - {id: C, name: "Нефть Brent"}
   - {id: F, name: "Зерновые рынки"}
+  - {id: Q, name: "США и Великобритания, квартальные"}
 
 areas:
   - {id: WORLD, name: "Мир", kind: aggregate}
@@ -154,6 +203,34 @@ indicators:
     base: "в среднем за год; цена российской нефти, публикуемая Минэкономразвития"
     groups: [A]
     precision: 1
+  - id: gdp_qoq_saar
+    name: "Рост реального ВВП, квартал к предыдущему кварталу в годовом выражении"
+    unit: "%, к пред. кварталу в годовом выражении"
+    transform: qoq_saar
+    base: "реальный ВВП с устранением сезонности, рост к предыдущему кварталу в годовом выражении (SAAR)"
+    groups: [Q]
+    precision: 1
+    averageable: false
+    actual_sources: {US: bea_nipa}
+    description: "Темп роста реального ВВП к предыдущему кварталу, пересчитанный в годовое выражение."
+  - id: gdp_yoy_q
+    name: "Рост реального ВВП, квартал к тому же кварталу прошлого года"
+    unit: "%, к тому же кварталу прошлого года"
+    transform: yoy_q
+    base: "реальный ВВП (цепные объёмы) с устранением сезонности, к тому же кварталу прошлого года"
+    groups: [Q]
+    precision: 1
+    averageable: false
+    actual_sources: {GB: ons_gdp}
+  - id: cpi_yoy_q
+    name: "Инфляция, квартал к тому же кварталу прошлого года"
+    unit: "%, к тому же кварталу прошлого года"
+    transform: yoy_q
+    base: "средний за квартал индекс потребительских цен к тому же кварталу прошлого года"
+    groups: [Q]
+    precision: 1
+    averageable: false
+    actual_sources: {GB: ons_cpi}
 
 series:
   # Group C: Brent
@@ -231,3 +308,21 @@ series:
   # Reference actuals
   - {source: eurostat_hicp, code: "prc_hicp_aind RCH_A_AVG", indicator: cpi_avg, area: EA}
   - {source: wb_wdi, code: "NY.GDP.MKTP.KD.ZG", indicator: gdp_growth, area: RU}
+  # US real GDP, quarter on quarter at annual rate
+  - {source: bea_nipa, code: "T10101 A191RL", indicator: gdp_qoq_saar, area: US}
+  - {source: cbo_econ, code: real_gdp_pct_change, indicator: gdp_qoq_saar, area: US}
+  - {source: spf_philly, code: "RGDP drgdp2-drgdp6", indicator: gdp_qoq_saar, area: US,
+     note: "Рост медианного прогноза уровня ВВП; квартал опроса и четыре следующих"}
+  - {source: fannie_mae, code: "Gross Domestic Product, Quarterly SAAR", indicator: gdp_qoq_saar, area: US,
+     note: "Из PDF; прогнозные кварталы отмечены заливкой"}
+  - {source: td_economics, code: "U.S. Economic Outlook: Real GDP", indicator: gdp_qoq_saar, area: US,
+     note: "Из PDF; прогнозные кварталы отмечены буквой F"}
+  # United Kingdom, quarter on the same quarter a year earlier
+  - {source: ons_cpi, code: D7G7, indicator: cpi_yoy_q, area: GB}
+  - {source: ons_gdp, code: IHYR, indicator: gdp_yoy_q, area: GB}
+  - {source: boe_mpr_uk, code: "1. CPI inflation", indicator: cpi_yoy_q, area: GB}
+  - {source: boe_mpr_uk, code: "2. GDP growth", indicator: gdp_yoy_q, area: GB}
+  - {source: obr_efo, code: "1.7 CPI", indicator: cpi_yoy_q, area: GB}
+  - {source: obr_efo, code: "1.1 Real GDP", indicator: gdp_yoy_q, area: GB,
+     note: "Темп рассчитан из уровней реального ВВП того же выпуска",
+     caveat: "OBR публикует уровень реального ВВП; темп к тому же кварталу прошлого года рассчитан из уровней того же выпуска (таблица 1.1)."}

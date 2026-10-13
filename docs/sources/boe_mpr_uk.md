@@ -1,0 +1,12 @@
+# Банк Англии, Monetary Policy Report: прогноз CPI и ВВП Великобритании
+
+- **Роль:** прогнозы для «Инфляция в Великобритании» и «Реальный ВВП Великобритании».
+- **Файл:** тот же архив выпуска, что у `boe_mpr` (см. `boe_mpr.md`): `mpr-<month>-<YYYY>-charts-slides-and-data.zip`, внутри `Projections Databank - <Month> <YYYY> MPR.xlsx`. Ссылку и точную дату даёт страница выпуска.
+- **Листы:** `1. CPI inflation` — «Four-quarter percentage change in CPI index. Based on ONS series D7G7»; `2. GDP growth` — «Percentage change on quarter a year earlier. Chained-volume measure. Based on ONS series ABMI». A5 — «Date of publication»; строка 5 — кварталы `2004 Q1` … ; со строки 6 — по строке на каждый доклад (дата — первое число месяца доклада).
+- **Что берём:** строка доклада целиком. По листу Notes: «The projections for CPI inflation, GDP growth and the unemployment rate are the MPC's central projections»; «the grey shaded cells represent the projections at the time of that Report». Прогнозные ячейки — заливка темы 3 или условное форматирование `AND(COLUMN() >= ROW() - n, COLUMN() <= ROW() + m)`; другое правило — ошибка структуры. Незатенённые значения — данные на дату доклада.
+- **Глубина:** вся история (решение заказчика 13 октября 2026): CPI — с февраля 2004 года, ВВП — с августа 2007 года; 90 докладов. В апреле 2026 года центрального прогноза нет (Notes: «no central projection was produced for the April 2026 Report»), строки нет.
+- **Даты:** для докладов с ноября 2025 года — точная дата со страницы выпуска (строка «2026-08-01» соответствует докладу 30 июля 2026). Для более ранних известен только месяц: винтаж — первое число месяца, в названии «≈». До ноября 2019 года доклад назывался Inflation Report.
+- **Хранение:** архив (≈9 МБ) сохраняется один раз в папке выпуска, из которого взят; `release.json` остальных выпусков ссылается на него (поле `shared`). Новый доклад добавит свой архив и свою строку.
+- **Вид значения:** ячейки прогноза на кварталы раньше квартала доклада (по ВВП затенён и предыдущий квартал) хранятся как оценка (`estimate`), с квартала доклада — как прогноз.
+- **Лицензия:** материалы Банка Англии, использование с указанием источника (https://www.bankofengland.co.uk/legal).
+- **Образец:** `tests/fixtures/boe_mpr_uk/databank-july-2026-history.xlsx` — два листа из Projections Databank июля 2026 (остальные удалены, заливка и условное форматирование сохранены).

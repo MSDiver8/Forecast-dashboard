@@ -11,6 +11,7 @@ export interface Featured {
   short: string;
   subtitle?: string | null;
   description: string;
+  added?: string | null;
 }
 
 export interface Indicator {
@@ -84,8 +85,28 @@ export interface Card extends Featured {
   frequencies: Frequency[];
 }
 
+export interface NewsBlock {
+  featured: string;
+  title: string;
+  published: string;
+  text: string;
+  unit: string;
+  precision: number;
+  frequency: Frequency;
+  fact: { short: string; points: { period: string; value: number }[] } | null;
+  lines: {
+    source_id: string;
+    short: string;
+    color: string;
+    release_title: string;
+    vintage_date: string;
+    points: { period: string; value: number }[];
+  }[];
+}
+
 export interface Overview {
   cards: Card[];
+  news: NewsBlock | null;
   totals: { indicators: number; sources: number; releases: number; last_update: string | null };
   latest_releases: { title: string; vintage_date: string; short: string; color: string }[];
 }

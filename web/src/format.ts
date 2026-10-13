@@ -14,7 +14,14 @@ export function formatMonth(value: string): string {
 }
 
 export function formatDate(value: string): string {
-  return fullDateFormatter.format(new Date(`${value}T00:00:00`));
+  return fullDateFormatter.format(new Date(`${value.slice(0, 10)}T00:00:00`)).replace(" г.", "");
+}
+
+const longMonthFormatter = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" });
+
+/** 2026-07-30 -> "июль 2026". */
+export function formatMonthLong(value: string): string {
+  return longMonthFormatter.format(new Date(`${value.slice(0, 10)}T00:00:00`)).replace(" г.", "");
 }
 
 export function formatNumber(value: number, maximumFractionDigits = 1): string {

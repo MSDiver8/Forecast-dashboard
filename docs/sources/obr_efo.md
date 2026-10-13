@@ -1,0 +1,11 @@
+# OBR, Economic and fiscal outlook: детальные таблицы по экономике
+
+- **Роль:** прогнозы для «Инфляция в Великобритании» и «Реальный ВВП Великобритании».
+- **Страница выпуска:** `https://obr.uk/efo/economic-and-fiscal-outlook-<month>-<YYYY>/`; дата — `"datePublished"` в JSON-LD страницы (март 2026 — 3 March 2026). Страница ≈0,6–0,9 МБ, поэтому выпуск сначала ищется запросом HEAD к файлу.
+- **Файл:** `https://obr.uk/download/<month>-<YYYY>-economic-and-fiscal-outlook-detailed-forecast-tables-economy/` — ответ 302 на XLSX (≈0,5 МБ); если выпуска нет — 404. Проверено 13 октября 2026: октябрь 2024, март 2025, ноябрь 2025, март 2026.
+- **Таблицы:** лист `1.7` «Inflation», столбец с заголовком `CPI` (строки 3–5) — % к тому же кварталу прошлого года, кварталы `2008Q1`… в столбце B. Примечание листа: «RPI, RPIX, CPI and CPIH inflation are based on outturn data up to and including December 2025»; определение — ONS D7G7. Лист `1.1` «GDP expenditure components (£ billion chain-linked volumes…)», столбец `Real GDP` — уровень реального ВВП.
+- **Рост ВВП:** темпы OBR в таблицах не публикует; рост к тому же кварталу прошлого года считается из уровней того же выпуска: 100 × (Yₜ / Yₜ₋₄ − 1). Это пометка под графиком.
+- **Граница факт/прогноз:** CPI — по примечанию об outturn: кварталы, полностью покрытые фактом, — факт; с квартала выпуска — прогноз; между ними — оценка. Для ВВП в таблицах нет пометки, какие кварталы — данные ONS: до квартала выпуска значения хранятся как оценка, с него — как прогноз.
+- **Глубина:** около 2 лет (правило ТЗ): 4 выпуска с октября 2024 года.
+- **Лицензия:** Open Government Licence (https://obr.uk/legal-pages/copyright/: «You may use and re-use the information … under the terms of the Open Government Licence»).
+- **Образцы:** `tests/fixtures/obr_efo/economy-march-2026.xlsx` (листы 1.1 и 1.7), `efo-march-2026-excerpt.html` (дата и ссылка со страницы).

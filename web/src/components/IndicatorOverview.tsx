@@ -1,7 +1,7 @@
 import { formatPeriod, formatShortDate, formatValue } from "../format";
 import { t } from "../i18n";
-import type { Overview } from "../types";
-import { IndicatorPicker } from "./IndicatorPicker";
+import type { Card, Overview } from "../types";
+import { NewsPanel } from "./NewsPanel";
 import { Sparkline } from "./Sparkline";
 
 interface Props {
@@ -10,40 +10,32 @@ interface Props {
   onOpenSources: () => void;
 }
 
+const NEW_DAYS = 90;
+
+/** "Новое" stays on a card for three months after the indicator was added. */
+function isNew(card: Card): boolean {
+  if (!card.added) return false;
+  const days = (Date.now() - new Date(`${card.added}T00:00:00`).getTime()) / 86_400_000;
+  return days >= 0 && days <= NEW_DAYS;
+}
+
 export function IndicatorOverview({ overview, onOpenIndicator, onOpenSources }: Props) {
-  const { cards, totals } = overview;
+  const { cards, totals, news } = overview;
+  const toList = () => document.getElementById("indicator-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
   return (
     <main className="page-shell overview-page">
       <section className="overview-hero">
         <div className="overview-hero__copy">
           <p className="eyebrow">{t("overview.eyebrow")}</p>
           <h1>{t("app.title")}</h1>
+          <p className="overview-hero__tagline">{t("app.subtitle")}</p>
           <p>{t("overview.lead")}</p>
           <div className="overview-hero__actions">
-            <IndicatorPicker items={cards} onSelect={onOpenIndicator} variant="primary" />
+            <button className="button button--primary" type="button" onClick={toList}>{t("overview.pick")} <span aria-hidden="true">↓</span></button>
             <button className="button button--outline" type="button" onClick={onOpenSources}>{t("overview.registry")}</button>
           </div>
         </div>
-        <aside className="forecast-preview" aria-label={t("preview.title")}>
-          <div className="forecast-preview__head"><span>{t("preview.eyebrow")}</span><b>{t("preview.title")}</b></div>
-          <svg viewBox="0 0 620 300" role="img" aria-label={t("preview.title")}>
-            <g className="forecast-preview__grid"><line x1="46" y1="55" x2="596" y2="55" /><line x1="46" y1="128" x2="596" y2="128" /><line x1="46" y1="201" x2="596" y2="201" /><line x1="46" y1="264" x2="596" y2="264" /></g>
-            <path className="forecast-preview__zone" d="M310 35 H596 V270 H310 Z" />
-            <line className="forecast-preview__cutoff" x1="310" y1="35" x2="310" y2="270" />
-            <path className="forecast-preview__actual" d="M46 184 C82 166 101 202 132 173 S188 112 216 145 S260 217 310 153" />
-            <path className="forecast-preview__forecast forecast-preview__forecast--one" d="M310 153 C366 132 430 111 596 85" />
-            <path className="forecast-preview__forecast forecast-preview__forecast--two" d="M310 153 C372 174 466 187 596 215" />
-            <path className="forecast-preview__band" d="M310 153 C380 150 482 140 596 120 L596 196 C482 182 380 165 310 153 Z" />
-            <path className="forecast-preview__model" d="M310 153 C380 149 482 160 596 158" />
-            <text x="318" y="52" className="forecast-preview__label">{t("chart.forecasts")}</text>
-          </svg>
-          <div className="forecast-preview__legend">
-            <span><i className="is-actual" />{t("preview.actual")}</span>
-            <span><i className="is-source" />{t("preview.source")}</span>
-            <span><i className="is-model" />{t("preview.model")}</span>
-          </div>
-          <p className="forecast-preview__note">{t("preview.note")}</p>
-        </aside>
+        {news && <NewsPanel news={news} onOpen={() => onOpenIndicator(news.featured)} />}
       </section>
 
       <section className="overview-index" aria-label={t("overview.sectionTitle")}>
@@ -59,8 +51,8 @@ export function IndicatorOverview({ overview, onOpenIndicator, onOpenSources }: 
         <p>{t("overview.sectionText")}</p>
       </section>
 
-      <section className="indicator-grid">
-        {cards.map((card, index) => {
+      <section className="indicator-grid indicator-grid--four">
+        {cards.map((card) => {
           const target = card.targets[0];
           const values = card.latest
             .map((l) => ({ ...l, point: target ? l.values[target] : null }))
@@ -68,7 +60,7 @@ export function IndicatorOverview({ overview, onOpenIndicator, onOpenSources }: 
             .sort((a, b) => b.point!.value - a.point!.value);
           return (
             <button className="indicator-card" type="button" key={card.id} onClick={() => onOpenIndicator(card.id)}>
-              <span className="indicator-card__number">{String(index + 1).padStart(2, "0")}</span>
+              {isNew(card) && <span className="new-badge">{t("overview.new")}</span>}
               <span className="indicator-card__category">{card.category}</span>
               <h3>{card.title}</h3>
               <p>{card.description}</p>
@@ -102,25 +94,6 @@ export function IndicatorOverview({ overview, onOpenIndicator, onOpenSources }: 
             </button>
           );
         })}
-        <aside className="indicator-card indicator-card--news">
-          <span className="indicator-card__category">{t("overview.latestReleases")}</span>
-          <ul className="release-feed">
-            {overview.latest_releases.map((r) => (
-              <li key={`${r.short}-${r.title}`}>
-                <i style={{ background: r.color }} />
-                <span><b>{r.short}</b>{r.title}</span>
-                <time>{formatShortDate(r.vintage_date)}</time>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      </section>
-
-      <section className="workflow-strip" aria-label={t("app.title")}>
-        <div><span>01</span><strong>{t("overview.step1")}</strong><small>{t("overview.step1Text")}</small></div>
-        <div><span>02</span><strong>{t("overview.step2")}</strong><small>{t("overview.step2Text")}</small></div>
-        <div><span>03</span><strong>{t("overview.step3")}</strong><small>{t("overview.step3Text")}</small></div>
-        <div><span>04</span><strong>{t("overview.step4")}</strong><small>{t("overview.step4Text")}</small></div>
       </section>
     </main>
   );

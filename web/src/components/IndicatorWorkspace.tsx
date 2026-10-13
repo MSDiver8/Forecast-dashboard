@@ -20,6 +20,8 @@ interface Props {
 
 const HORIZON: Record<Frequency, number> = { A: 4, Q: 8, M: 18 };
 const VISIBLE_HISTORY: Record<Frequency, number> = { A: 10, Q: 16, M: 48 };
+// Quarterly forecasts may run 10 years ahead (CBO): the first view stops 5 years after the last fact.
+const VISIBLE_AHEAD: Partial<Record<Frequency, number>> = { Q: 20 };
 const RELEASES_SHOWN = 3;
 const MIN_OBS: Record<string, (m: number) => number> = {
   rw: () => 2, rwd: () => 3, rws: (m) => (m > 1 ? 2 * m : Infinity), rwds: (m) => (m > 1 ? 2 * m : Infinity),
@@ -35,7 +37,7 @@ export function IndicatorWorkspace({ id, featured, onSelect, onBack }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [asof, setAsof] = useState("");
-  const [bands, setBands] = useState(true);
+  const [bands, setBands] = useState(false);  // published ranges (whiskers) only on request
   const [models, setModels] = useState<ModelSpec[]>([]);
   const [chosen, setChosen] = useState<Set<string>>(new Set(["rw", "rwd"]));
   const [intervals, setIntervals] = useState(false);
@@ -63,9 +65,12 @@ export function IndicatorWorkspace({ id, featured, onSelect, onBack }: Props) {
   const shown = useMemo(() => (data ? effectiveSelection(data, selected, asof) : new Set<string>()), [data, selected, asof]);
   const lines = useMemo(() => (data ? buildLines(data, shown, asof, runs, frequency) : []), [data, shown, asof, runs, frequency]);
   const periods = useMemo(() => categories(lines), [lines]);
+  const lineColor = useMemo(() => new Map(lines.map((l) => [l.key, l.color])), [lines]);
   const fact = useMemo(() => (data ? actualPoints(data, asof, frequency) : []), [data, asof, frequency]);
   const lastFact = fact.length ? fact[fact.length - 1] : null;
   const initialStart = lastFact ? periods[Math.max(0, periods.indexOf(lastFact.period) - VISIBLE_HISTORY[frequency])] : null;
+  const ahead = VISIBLE_AHEAD[frequency];
+  const initialEnd = lastFact && ahead ? periods[Math.min(periods.length - 1, periods.indexOf(lastFact.period) + ahead)] : null;
   const stale = useMemo(() => (data ? staleSources(data) : new Set<string>()), [data]);
   const season = frequency === "M" ? 12 : frequency === "Q" ? 4 : 1;
   const available = models.filter((m) => fact.length >= (MIN_OBS[m.code]?.(season) ?? 1));
@@ -198,10 +203,10 @@ export function IndicatorWorkspace({ id, featured, onSelect, onBack }: Props) {
                       {!asof && stale.has(source.source_id) && !releases.some((r) => shown.has(r.release_id)) && (
                         <p className="source-choice__stale">{t("ws.stale", { date: formatShortDate(releases[0].vintage_date) })}</p>
                       )}
-                      {visible.map((r, i) => (
+                      {visible.map((r) => (
                         <label className="check-row" key={r.release_id}>
                           <input type="checkbox" checked={shown.has(r.release_id)} onChange={() => toggleRelease(r.release_id)} />
-                          <i style={{ background: source.color, opacity: i === 0 ? 1 : 0.45 }} />
+                          <i style={{ background: lineColor.get(`r:${r.release_id}`) ?? source.color, opacity: shown.has(r.release_id) ? 1 : 0.3 }} />
                           <span><b>{r.title}</b><small>{formatShortDate(r.vintage_date)}</small></span>
                         </label>
                       ))}
@@ -290,14 +295,14 @@ export function IndicatorWorkspace({ id, featured, onSelect, onBack }: Props) {
                   <span>{indicator.unit} · {t(`freq.${frequency}`).toLowerCase()} · {t("ws.zoomHint")}</span>
                 </div>
                 <div className="chart-tools">
-                  <button type="button" className="icon-button" onClick={() => chartRef.current?.zoomTo(initialStart, null)}>{t("ws.zoomRecent")}</button>
+                  <button type="button" className="icon-button" onClick={() => chartRef.current?.zoomTo(initialStart, initialEnd)}>{t("ws.zoomRecent")}</button>
                   <button type="button" className="icon-button" onClick={() => chartRef.current?.zoomTo(null, null)}>{t("ws.zoomAll")}</button>
                   <button type="button" className="icon-button" onClick={() => chartRef.current?.png(`${id}_${frequency}`)}>{t("ws.png")}</button>
                 </div>
               </div>
               {lines.length <= 1 && <div className="inline-error">{t("ws.noSelection")}</div>}
               <ForecastChart ref={chartRef} lines={lines} periods={periods} unit={indicator.unit} precision={indicator.precision}
-                showBands={bands} showIntervals={intervals} lastFact={lastFact?.period ?? null} asofPeriod={asofPeriod} asofDate={asof} initialStart={initialStart} />
+                showBands={bands} showIntervals={intervals} lastFact={lastFact?.period ?? null} asofPeriod={asofPeriod} asofDate={asof} initialStart={initialStart} initialEnd={initialEnd} />
               {caveats.length > 0 && (
                 <div className="chart-note">
                   {caveats.map((s) => <p key={s.source_id}><b style={{ color: s.color }}>{s.short}.</b> {s.caveat}</p>)}

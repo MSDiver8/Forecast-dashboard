@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -32,6 +33,9 @@ class Indicator(BaseModel):
     description: str | None = None
     precision: int = 1
     actual_sources: dict[str, str] = {}
+    # False for growth rates: an annual value is not the mean of quarterly rates, so coarser
+    # frequencies are never derived from finer ones.
+    averageable: bool = True
 
     def actual_source(self, area_id: str) -> str | None:
         return self.actual_sources.get(area_id) or self.actual_sources.get("*")
@@ -43,6 +47,7 @@ class Series(BaseModel):
     indicator: str
     area: str
     note: str | None = None
+    caveat: str | None = None  # shown under the chart for this indicator only, instead of the source caveat
 
 
 class Featured(BaseModel):
@@ -55,6 +60,7 @@ class Featured(BaseModel):
     short: str
     subtitle: str | None = None
     description: str
+    added: date | None = None  # when the indicator appeared in the dashboard ("Новое" on the start page)
 
 
 class SourceInfo(BaseModel):
@@ -64,8 +70,20 @@ class SourceInfo(BaseModel):
     caveat: str | None = None
 
 
+class News(BaseModel):
+    """Start page announcement: a featured indicator, a short text and the releases to draw."""
+
+    featured: str
+    published: date
+    text: str
+    sources: list[str]
+    start: str  # first period on the chart
+    end: str | None = None
+
+
 class Catalog(BaseModel):
     featured: list[Featured] = []
+    news: News | None = None
     source_info: dict[str, SourceInfo] = {}
     groups: list[Group]
     areas: list[Area]
@@ -90,6 +108,8 @@ def load(path: Path | None = None) -> Catalog:
     for f in catalog.featured:
         if f.indicator not in ids or f.area not in areas:
             raise ValueError(f"Unknown indicator or area in featured: {f.id}")
+    if catalog.news and catalog.news.featured not in {f.id for f in catalog.featured}:
+        raise ValueError(f"Unknown featured indicator in news: {catalog.news.featured}")
     return catalog
 
 

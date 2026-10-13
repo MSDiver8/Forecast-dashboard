@@ -54,3 +54,48 @@ def test_release_is_loaded_once_and_annual_view_is_derived(con):
     assert derived == "M" and len(rows) == 1
     series = queries.release_series(con, rows[0], "brent_price", "WORLD", "fake", "A", derived)
     assert [(p.period, p.value) for p in series.points] == [("2025", 6.5)]
+
+
+class HistoryConnector(FakeConnector):
+    """Two releases read from one shared file, as for the Bank of England history."""
+
+    source_id = "hist"
+
+    def list_releases(self):
+        return [
+            Release(
+                f"hist_{y}",
+                "hist",
+                f"H {y}",
+                date(y, 2, 1),
+                "http://example/f.zip",
+                "f.zip",
+                shared="2025-02-01/f.zip",
+            )
+            for y in (2024, 2025)
+        ]
+
+    def fetch(self, release: Release) -> Path:
+        release.raw_path.parent.mkdir(parents=True, exist_ok=True)
+        release.raw_path.write_text("history")
+        return release.raw_path
+
+
+def test_releases_share_one_raw_file(con, monkeypatch):
+    connector = HistoryConnector()
+    monkeypatch.setattr(runner, "get", lambda source_id: connector)
+    result = runner.ingest_source(con, "hist")
+    assert result.error is None and result.releases_added == 2
+    files = sorted(
+        p.relative_to(settings.RAW_DIR / "hist").as_posix() for p in (settings.RAW_DIR / "hist").rglob("*")
+    )
+    assert files == [
+        "2024-02-01",
+        "2024-02-01/release.json",
+        "2025-02-01",
+        "2025-02-01/f.zip",
+        "2025-02-01/release.json",
+    ]
+    saved = runner.local_releases("hist")
+    assert [r.shared for r, _ in saved] == ["2025-02-01/f.zip", "2025-02-01/f.zip"]
+    assert runner.ingest_source(con, "hist").releases_added == 0

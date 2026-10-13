@@ -27,3 +27,36 @@ def test_featured_cards_skip_stale_sources(con, catalog):
     # "old" stopped publishing two years before the newest release, so it is not on the card
     assert [item["source_id"] for item in card["latest"]] == ["fc"]
     assert card["latest"][0]["values"]["2026"]["value"] == 4.5
+
+
+def test_growth_rates_are_not_averaged_into_years(con, catalog):
+    con.execute("INSERT INTO sources VALUES ('qs', 'qs', 'QS', 'http://x', 'lic', 'api', 'forecast')")
+    con.execute(
+        "INSERT INTO releases VALUES ('qs_1', 'qs', 'q', DATE '2025-06-01', NULL, now(), 'raw', 'u', 'x')"
+    )
+    for period, value in [("2025-Q1", 1.0), ("2025-Q2", 2.0), ("2025-Q3", 3.0), ("2025-Q4", 4.0)]:
+        con.execute(
+            "INSERT INTO observations VALUES ('qs_1', 'ind', 'RU', ?, 'Q', ?, NULL, NULL, 'forecast')",
+            [period, value],
+        )
+    annual = queries.pair_series(con, catalog, "ind", "RU", "A")
+    assert next(s for s in annual["sources"] if s["source_id"] == "qs")["derived_from"] == "Q"
+    catalog.indicators[0].averageable = False  # e.g. growth on the previous quarter
+    assert "qs" not in [
+        s["source_id"] for s in queries.pair_series(con, catalog, "ind", "RU", "A")["sources"]
+    ]
+    assert [s["source_id"] for s in queries.pair_series(con, catalog, "ind", "RU", "Q")["sources"]] == ["qs"]
+
+
+def test_news_block_draws_newest_release_from_last_known_value(con, catalog):
+    from datetime import date
+
+    from fdash.core.catalog import News
+
+    catalog.news = News(featured="x", published=date(2026, 10, 13), text="t", sources=["fc"], start="2023")
+    news = queries.news_block(con, catalog)
+    assert news["title"] == "T" and news["fact"]["points"][0] == {"period": "2023", "value": 7.4}
+    line = news["lines"][0]
+    assert line["release_title"] == "fc_2025"
+    # the path starts at the 2024 estimate, the value known to the source on the release date
+    assert [p["period"] for p in line["points"]] == ["2024", "2025", "2026"]

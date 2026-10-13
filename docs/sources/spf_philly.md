@@ -1,0 +1,11 @@
+# ФРБ Филадельфии, Survey of Professional Forecasters (рост реального ВВП США)
+
+- **Роль:** прогноз для «Реальный ВВП США».
+- **Файл:** `https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/historical-data/mediangrowth.xlsx` — медианные темпы роста по всем опросам с 1968 года, ≈145 КБ. Проверено 13 октября 2026: ответ 200.
+- **Структура:** лист `RGDP`: `YEAR`, `QUARTER` (квартал проведения опроса), `drgdp2` … `drgdp6`; нет значения — `#N/A`.
+- **Определение (документация SPF, раздел 3, обновление 28.07.2026):** «Growth rates are those for quarter-over-quarter growth, expressed in annualized percentage points, beginning with the forecast for the current quarter»; «"2" … represents a forecast for the quarter in which the survey is conducted. The numbers "3" to "6" represent the quarter-over-quarter growth rate forecasts for the following four quarters»; формула 100 × ((Xₜ/Xₜ₋₁)⁴ − 1). Это то же определение, что у BEA A191RL. Особенность: «the survey's reported growth rate is the rate of growth of the mean or median forecast for the level, not the mean or median forecast for the growth rate» — пометка под графиком.
+- **Даты:** `https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/spf-release-dates.txt` — «News Release Date» каждого опроса с 1990 Q2 (год указан в строке I квартала; звёздочки — сноски о задержках). 2026 Q3 — 14.08.2026.
+- **Глубина:** около 2 лет (правило ТЗ): 8 опросов с IV кв. 2024 года; история с 1968 года доступна в том же файле.
+- **Хранение:** файл и список дат копируются в папку каждого выпуска (как у опроса Банка России).
+- **Лицензия:** публичные данные ФРБ Филадельфии; используем с указанием источника (отдельную страницу условий автоматически найти не удалось).
+- **Образцы:** `tests/fixtures/spf_philly/mediangrowth.xlsx`, `spf-release-dates.txt`.

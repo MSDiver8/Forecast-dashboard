@@ -77,6 +77,7 @@ def featured() -> dict:
         feed.append((title, vintage, source_id))
     return {
         "cards": cards,
+        "news": queries.news_block(con, cat),
         "totals": {
             "indicators": len(cards),
             "sources": sum(1 for s in sources if s["role"] == "forecast"),

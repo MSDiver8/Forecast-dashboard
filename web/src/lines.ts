@@ -1,5 +1,5 @@
-import { ACTUAL_COLOR, MODEL_COLORS, vintageShade } from "./colors";
-import { periodOf, shiftPeriod } from "./format";
+import { ACTUAL_COLOR, MODEL_COLORS, distinctColors } from "./colors";
+import { formatPeriod, periodOf, shiftPeriod } from "./format";
 import { t } from "./i18n";
 import type { Frequency, ModelRun, Point, Release, SeriesResponse, SourceSeries } from "./types";
 
@@ -19,7 +19,8 @@ export interface ChartLine {
   label: string;          // full name in tooltips and tables
   vintage?: string;
   color: string;
-  latest: boolean;        // the newest selected release of its source: thicker line and end label
+  latest: boolean;        // the newest selected release of its source: thicker line
+  endLabel: string | null; // text before the value at the line end: the source, or the month of an older release
   connect: boolean;       // false when the source publishes isolated periods (e.g. only Q4 of each year)
   points: LinePoint[];
 }
@@ -29,6 +30,8 @@ function consecutive(points: LinePoint[]): boolean {
 }
 
 const STALE_DAYS = 365;
+// Above this many older releases on the chart their end labels would overlap: only colours and the legend.
+const LABELLED_OLDER = 20;
 
 /** Sources whose newest release is a year older than the newest release overall are hidden by default. */
 export function staleSources(data: SeriesResponse): Set<string> {
@@ -89,23 +92,33 @@ export function buildLines(
   if (data.actual && fact.length) {
     lines.push({
       key: "actual", kind: "actual", group: t("chart.fact"), label: `${t("chart.fact")} · ${data.actual.short}`,
-      color: ACTUAL_COLOR, latest: true, connect: false, points: fact.map((p) => ({ period: p.period, value: p.value })),
+      color: ACTUAL_COLOR, latest: true, endLabel: null, connect: false,
+      points: fact.map((p) => ({ period: p.period, value: p.value })),
     });
   }
+  // The newest selected release keeps the colour of its source; older ones get distinct tones.
+  const older = data.sources.flatMap((s) => s.releases.filter((r) => shown.has(r.release_id)).slice(0, -1));
+  const onChart = data.sources.filter((s) => s.releases.some((r) => shown.has(r.release_id)));
+  const avoid = [ACTUAL_COLOR, ...onChart.map((s) => s.color), ...runs.map((r) => MODEL_COLORS[r.model] ?? "#555")];
+  const palette = distinctColors(older.length, avoid);
+  const olderColor = new Map(older.map((r, i) => [r.release_id, palette[i]]));
   for (const source of data.sources) {
     const releases = source.releases.filter((r) => shown.has(r.release_id));
-    // Newest first, so that the legend takes the full colour of the source.
+    // Newest first, so that it comes first in the legend.
     [...releases].reverse().forEach((release, reversedIndex) => {
-      const index = releases.length - 1 - reversedIndex;
+      const latest = reversedIndex === 0;
+      const month = formatPeriod(release.vintage_date.slice(0, 7));
       const points = forecastPath(release);
       lines.push({
         key: `r:${release.release_id}`,
         kind: "release",
-        group: source.short,
+        group: latest ? source.short : `${source.short} · ${month}`,
         label: `${source.short} · ${release.title}`,
         vintage: release.vintage_date,
-        color: vintageShade(source.color, index, releases.length),
-        latest: index === releases.length - 1,
+        color: latest ? source.color : olderColor.get(release.release_id)!,
+        latest,
+        endLabel: latest ? (releases.length > 1 ? `${source.short} · ${month}` : source.short)
+          : older.length <= LABELLED_OLDER ? month : null,
         connect: consecutive(points),
         points,
       });
@@ -119,6 +132,7 @@ export function buildLines(
       label: `${run.name} · ${t("chart.model")}`,
       color: MODEL_COLORS[run.model] ?? "#555",
       latest: true,
+      endLabel: `${run.name} · ${t("chart.model")}`,
       connect: true,
       points: [
         // The fan starts at the last actual value: zero width at the origin.

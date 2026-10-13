@@ -7,14 +7,14 @@ import json
 import logging
 import shutil
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 import duckdb
 
 from fdash import settings
 from fdash.core import catalog as catalog_mod
-from fdash.ingest.base import Connector, Release, sha256
+from fdash.ingest.base import Connector, Release, saved_releases, sha256
 from fdash.ingest.registry import CONNECTORS, get, load_all
 
 log = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class Result:
 
 
 def _meta_path(release: Release) -> Path:
-    return release.raw_path.parent / META_NAME
+    return release.release_dir / META_NAME
 
 
 def _write_meta(release: Release) -> None:
@@ -42,8 +42,10 @@ def _write_meta(release: Release) -> None:
         "url": release.url,
         "filename": release.filename,
         "extra": release.extra,
+        "shared": release.shared,
         "fetched_at": datetime.now().isoformat(timespec="seconds"),
     }
+    release.release_dir.mkdir(parents=True, exist_ok=True)
     _meta_path(release).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -52,7 +54,7 @@ def _same_as_previous(release: Release) -> bool:
     previous = [r for r, _ in local_releases(release.source_id) if r.release_id != release.release_id]
     if not previous:
         return False
-    old_dir, new_dir = previous[-1].raw_path.parent, release.raw_path.parent
+    old_dir, new_dir = previous[-1].release_dir, release.release_dir
     new_files = sorted(p.name for p in new_dir.iterdir() if p.name != META_NAME)
     old_files = sorted(p.name for p in old_dir.iterdir() if p.name != META_NAME)
     return new_files == old_files and all(sha256(new_dir / n) == sha256(old_dir / n) for n in new_files)
@@ -60,19 +62,9 @@ def _same_as_previous(release: Release) -> bool:
 
 def local_releases(source_id: str) -> list[tuple[Release, datetime]]:
     result = []
-    for meta_file in sorted((settings.RAW_DIR / source_id).glob(f"*/{META_NAME}")):
-        meta = json.loads(meta_file.read_text(encoding="utf-8"))
-        release = Release(
-            release_id=meta["release_id"],
-            source_id=meta["source_id"],
-            title=meta["title"],
-            vintage_date=date.fromisoformat(meta["vintage_date"]),
-            url=meta["url"],
-            filename=meta["filename"],
-            extra=meta.get("extra", {}),
-        )
-        if release.raw_path.exists():
-            result.append((release, datetime.fromisoformat(meta["fetched_at"])))
+    for release in saved_releases(source_id).values():
+        meta = json.loads(_meta_path(release).read_text(encoding="utf-8"))
+        result.append((release, datetime.fromisoformat(meta["fetched_at"])))
     return sorted(result, key=lambda item: item[0].vintage_date)
 
 
@@ -156,13 +148,13 @@ def ingest_source(con: duckdb.DuckDBPyConnection, source_id: str, offline: bool 
             errors.append(f"list_releases: {type(exc).__name__}: {exc}")
             log.exception("list releases %s failed", source_id)
         for release in releases:
-            if release.raw_path.exists():
+            if _meta_path(release).exists():
                 continue
             try:
                 log.info("fetch %s", release.release_id)
                 connector.fetch(release)
                 if connector.dedupe and _same_as_previous(release):
-                    shutil.rmtree(release.raw_path.parent)
+                    shutil.rmtree(release.release_dir)
                     continue
                 _write_meta(release)
             except Exception as exc:

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import shutil
+import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
@@ -25,10 +28,19 @@ class Release:
     url: str
     filename: str
     extra: dict = field(default_factory=dict, compare=False, hash=False)
+    # A large file holding the history of many releases is stored once: the path is relative to
+    # data/raw/<source>/ and release.json of every release that was read from it points there.
+    shared: str | None = None
+
+    @property
+    def release_dir(self) -> Path:
+        return settings.RAW_DIR / self.source_id / self.vintage_date.isoformat()
 
     @property
     def raw_path(self) -> Path:
-        return settings.RAW_DIR / self.source_id / self.vintage_date.isoformat() / self.filename
+        if self.shared:
+            return settings.RAW_DIR / self.source_id / self.shared
+        return self.release_dir / self.filename
 
 
 @dataclass(frozen=True)
@@ -51,6 +63,43 @@ class Parsed:
 
 class SourceStructureError(RuntimeError):
     """The raw file does not have the structure the parser expects."""
+
+
+def archive_start(years: int) -> date:
+    """Oldest vintage kept: 5 years for annual forecasts, about 2 years for other frequencies."""
+    return date.today() - timedelta(days=365 * years + 31)
+
+
+def quarter_of(day: date) -> str:
+    return f"{day.year:04d}-Q{(day.month - 1) // 3 + 1}"
+
+
+def projection_kind(period: str, vintage: date, projected: bool) -> str:
+    """Kind of a quarterly value. The source marks what is projected; a projection for a quarter
+    before the release quarter (data not yet published) is an estimate, as for annual sources."""
+    if not projected:
+        return "actual"
+    return "forecast" if period >= quarter_of(vintage) else "estimate"
+
+
+def saved_releases(source_id: str) -> dict[str, Release]:
+    """Releases already saved under data/raw/<source>/, by release_id (from their release.json)."""
+    result = {}
+    for meta_file in sorted((settings.RAW_DIR / source_id).glob("*/release.json")):
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        release = Release(
+            release_id=meta["release_id"],
+            source_id=meta["source_id"],
+            title=meta["title"],
+            vintage_date=date.fromisoformat(meta["vintage_date"]),
+            url=meta["url"],
+            filename=meta["filename"],
+            extra=meta.get("extra", {}),
+            shared=meta.get("shared"),
+        )
+        if release.raw_path.exists():
+            result[release.release_id] = release
+    return result
 
 
 def sha256(path: Path) -> str:
@@ -89,6 +138,17 @@ def download(url: str, destination: Path, **kwargs) -> Path:
     tmp.write_bytes(response.content)
     tmp.replace(destination)
     return destination
+
+
+def download_temp(url: str, name: str, **kwargs) -> Path:
+    """Download into a fresh temporary directory: files that must be read to list releases."""
+    return download(url, Path(tempfile.mkdtemp(prefix="fdash_")) / name, **kwargs)
+
+
+def copy_into(source: Path, release: Release) -> Path:
+    release.raw_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, release.raw_path)
+    return release.raw_path
 
 
 class Connector(ABC):

@@ -52,13 +52,17 @@ def coverage(con: duckdb.DuckDBPyConnection) -> list[dict]:
     ]
 
 
-def frequencies_for(cov: list[dict], indicator_id: str, area_id: str) -> dict[str, set[str]]:
+def frequencies_for(
+    cov: list[dict], indicator_id: str, area_id: str, derive: bool = True
+) -> dict[str, set[str]]:
     """frequency -> forecast sources usable at that frequency (natively or by averaging)."""
     native: dict[str, set[str]] = defaultdict(set)
     for row in cov:
         if row["indicator_id"] == indicator_id and row["area_id"] == area_id and row["role"] == "forecast":
             native[row["frequency"]].add(row["source_id"])
     result = {f: set(s) for f, s in native.items()}
+    if not derive:
+        return result
     for target, lower in DERIVABLE.items():
         for freq in lower:
             if freq in native:
@@ -81,11 +85,11 @@ def _release_rows(con, indicator_id: str, area_id: str, source_id: str, frequenc
 
 
 def releases_of(
-    con, indicator_id: str, area_id: str, source_id: str, frequency: str
+    con, indicator_id: str, area_id: str, source_id: str, frequency: str, derive: bool = True
 ) -> tuple[list, str | None]:
     """Releases with data at the requested frequency, natively or derivable from a higher one."""
     rows = _release_rows(con, indicator_id, area_id, source_id, frequency)
-    if rows:
+    if rows or not derive:
         return rows, None
     for lower in DERIVABLE.get(frequency, ()):
         rows = _release_rows(con, indicator_id, area_id, source_id, lower)
@@ -152,7 +156,7 @@ def actual_series(
     source_id = indicator.actual_source(area_id) if indicator else None
     if not source_id:
         return None
-    rows, derived = releases_of(con, indicator_id, area_id, source_id, frequency)
+    rows, derived = releases_of(con, indicator_id, area_id, source_id, frequency, indicator.averageable)
     chosen = select_releases(rows, "asof" if asof else "latest", asof, set())
     if not chosen:
         return None
@@ -222,10 +226,12 @@ def _point_dict(p: SeriesPoint) -> dict:
 def pair_series(con, catalog: Catalog, indicator_id: str, area_id: str, frequency: str) -> dict:
     """Every release of every forecast source for one indicator, area and frequency, plus actuals."""
     cov = coverage(con)
-    usable = frequencies_for(cov, indicator_id, area_id)
+    indicator = catalog.indicator(indicator_id)
+    derive = indicator.averageable if indicator else True
+    usable = frequencies_for(cov, indicator_id, area_id, derive)
     sources = []
     for source_id in sorted(usable.get(frequency, set())):
-        rows, derived = releases_of(con, indicator_id, area_id, source_id, frequency)
+        rows, derived = releases_of(con, indicator_id, area_id, source_id, frequency, derive)
         releases = []
         for row in rows:
             series = release_series(con, row, indicator_id, area_id, source_id, frequency, derived)
@@ -240,27 +246,29 @@ def pair_series(con, catalog: Catalog, indicator_id: str, area_id: str, frequenc
                 )
         if not releases:
             continue  # e.g. one quarter a year cannot be averaged into an annual value
-        note = next(
+        series_entry = next(
             (
-                s.note
+                s
                 for s in catalog.series
                 if (s.source, s.indicator, s.area) == (source_id, indicator_id, area_id)
             ),
             None,
         )
+        meta = _source_meta(con, catalog, source_id)
+        if series_entry and series_entry.caveat:
+            meta["caveat"] = series_entry.caveat
         sources.append(
             {
-                **_source_meta(con, catalog, source_id),
-                "note": note,
+                **meta,
+                "note": series_entry.note if series_entry else None,
                 "derived_from": derived,
                 "releases": releases,
             }
         )
     actual = None
-    indicator = catalog.indicator(indicator_id)
     actual_source = indicator.actual_source(area_id) if indicator else None
     if actual_source:
-        rows, derived = releases_of(con, indicator_id, area_id, actual_source, frequency)
+        rows, derived = releases_of(con, indicator_id, area_id, actual_source, frequency, derive)
         actual_releases = []
         for row in rows:
             series = release_series(con, row, indicator_id, area_id, actual_source, frequency, derived)
@@ -330,6 +338,58 @@ def featured_cards(con, catalog: Catalog) -> list[dict]:
             }
         )
     return cards
+
+
+def news_block(con, catalog: Catalog) -> dict | None:
+    """Start page announcement: actuals and the newest release of the chosen sources."""
+    news = catalog.news
+    if news is None:
+        return None
+    item = next(f for f in catalog.featured if f.id == news.featured)
+    indicator = catalog.indicator(item.indicator)
+    data = pair_series(con, catalog, item.indicator, item.area, item.frequency)
+    end = news.end or "9999"
+
+    def window(points: list[dict]) -> list[dict]:
+        return [
+            {"period": p["period"], "value": p["value"]} for p in points if news.start <= p["period"] <= end
+        ]
+
+    lines = []
+    for source in data["sources"]:
+        if source["source_id"] not in news.sources:
+            continue
+        release = source["releases"][-1]
+        points = release["points"]
+        first = next((i for i, p in enumerate(points) if p["kind"] == "forecast"), None)
+        if first is None:
+            continue
+        lines.append(
+            {
+                "source_id": source["source_id"],
+                "short": source["short"],
+                "color": source["color"],
+                "release_title": release["title"],
+                "vintage_date": release["vintage_date"],
+                # From the last value known to the source, as on the comparison chart.
+                "points": window(points[max(0, first - 1) :]),
+            }
+        )
+    lines.sort(key=lambda line: news.sources.index(line["source_id"]))
+    actual = data["actual"]
+    return {
+        "featured": item.id,
+        "title": item.title,
+        "published": news.published,
+        "text": news.text,
+        "unit": indicator.unit,
+        "precision": indicator.precision,
+        "frequency": item.frequency,
+        "fact": {"short": actual["short"], "points": window(actual["releases"][-1]["points"])}
+        if actual
+        else None,
+        "lines": lines,
+    }
 
 
 def evaluation(con, catalog: Catalog, indicator_id: str, area_id: str, frequency: str) -> dict:

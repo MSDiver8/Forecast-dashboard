@@ -17,6 +17,14 @@ MODULES = [
     "ecb_spf",
     "eurostat_hicp",
     "wb_wdi",
+    "bea_nipa",
+    "ons",
+    "boe_mpr_uk",
+    "obr_efo",
+    "cbo_econ",
+    "spf_philly",
+    "fannie_mae",
+    "td_economics",
 ]
 
 CONNECTORS: dict[str, Connector] = {}

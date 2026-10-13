@@ -32,6 +32,7 @@ interface Props {
   asofPeriod: string | null;
   asofDate: string;
   initialStart: string | null;
+  initialEnd: string | null;
 }
 
 function escapeHtml(text: string): string {
@@ -39,7 +40,7 @@ function escapeHtml(text: string): string {
 }
 
 export const ForecastChart = forwardRef<ChartHandle, Props>(function ForecastChart(
-  { lines, periods, unit, precision, showBands, showIntervals, lastFact, asofPeriod, asofDate, initialStart }, ref,
+  { lines, periods, unit, precision, showBands, showIntervals, lastFact, asofPeriod, asofDate, initialStart, initialEnd }, ref,
 ) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
@@ -96,7 +97,7 @@ export const ForecastChart = forwardRef<ChartHandle, Props>(function ForecastCha
         z: isActual ? 6 : isModel ? 4 : line.latest ? 5 : 3,
         color: line.color,
         lineStyle: {
-          width: isActual ? 3.5 : line.latest ? 2.6 : 1.6,
+          width: isActual ? 3.5 : line.latest ? 2.8 : 2,
           type: isModel ? "dashed" : "solid",
           color: line.color,
         },
@@ -105,8 +106,8 @@ export const ForecastChart = forwardRef<ChartHandle, Props>(function ForecastCha
         showSymbol: sparse,
         emphasis: { focus: "series", lineStyle: { width: isActual ? 4 : 3.2 } },
         endLabel: {
-          show: line.latest && !isActual,
-          formatter: (p) => `${line.group}  ${formatValue(p.value as number, precision)}`,
+          show: line.endLabel != null && !isActual,
+          formatter: (p) => `${line.endLabel}  ${formatValue(p.value as number, precision)}`,
           color: line.color,
           fontWeight: isActual ? 700 : 600,
           fontSize: 12,
@@ -183,12 +184,16 @@ export const ForecastChart = forwardRef<ChartHandle, Props>(function ForecastCha
     }
 
     const legend = [...new Set(lines.map((l) => l.group))];
+    // Room on the right for the longest end label ("Опрос SPF (ФРБ Филадельфии)  2,5").
+    const longest = Math.max(0, ...lines.filter((l) => l.endLabel && l.kind !== "actual").map((l) => l.endLabel!.length));
+    const right = Math.min(300, Math.max(110, (longest + 7) * 7));
     const biggest = Math.max(0, ...lines.flatMap((l) => l.points.map((p) => Math.abs(p.value))));
     const digits = biggest >= 20 ? 0 : biggest >= 2 ? 1 : 2;
     const startIndex = initialStart ? Math.max(0, periods.indexOf(initialStart)) : 0;
+    const endIndex = initialEnd && periods.includes(initialEnd) ? periods.indexOf(initialEnd) : periods.length - 1;
     instance.setOption({
       animationDuration: 300,
-      grid: { left: 12, right: 150, top: 56, bottom: 78, containLabel: true },
+      grid: { left: 12, right, top: 56, bottom: 78, containLabel: true },
       legend: {
         type: "scroll", top: 0, left: 0, right: 0, data: legend, itemWidth: 22, itemHeight: 10, icon: "roundRect",
         textStyle: { color: "#202a35", fontSize: 13 }, pageIconSize: 11,
@@ -237,10 +242,10 @@ export const ForecastChart = forwardRef<ChartHandle, Props>(function ForecastCha
         splitLine: { lineStyle: { color: "#e5ebf0" } },
       },
       dataZoom: [
-        { type: "inside", xAxisIndex: 0, filterMode: "weakFilter", startValue: periods[startIndex], endValue: periods[periods.length - 1] },
+        { type: "inside", xAxisIndex: 0, filterMode: "weakFilter", startValue: periods[startIndex], endValue: periods[endIndex] },
         {
           type: "slider", xAxisIndex: 0, filterMode: "weakFilter", height: 26, bottom: 18,
-          startValue: periods[startIndex], endValue: periods[periods.length - 1],
+          startValue: periods[startIndex], endValue: periods[endIndex],
           labelFormatter: (_: number, value: string) => formatPeriod(value),
           borderColor: "#d7dfe7", fillerColor: "rgba(8,117,189,0.12)", handleStyle: { color: "#0875bd" },
           dataBackground: { lineStyle: { color: "#9ccbe6" }, areaStyle: { color: "rgba(98,180,220,0.18)" } },
@@ -248,7 +253,28 @@ export const ForecastChart = forwardRef<ChartHandle, Props>(function ForecastCha
       ],
       series,
     }, { notMerge: true });
-  }, [lines, periods, unit, precision, showBands, showIntervals, lastFact, asofPeriod, asofDate, initialStart, byKey]);
+
+    // An end label is drawn only while the last point of its line is inside the zoom window: otherwise
+    // ECharts places it outside the plot (the oversized labels after moving the right slider handle).
+    const lastIndex = new Map(lines.map((l) => [l.key, Math.max(-1, ...l.points.map((p) => index.get(p.period) ?? -1))]));
+    const labelled = lines.filter((l) => l.endLabel && l.kind !== "actual");
+    const toIndex = (v: unknown, fallback: number) =>
+      typeof v === "number" ? v : typeof v === "string" && index.has(v) ? index.get(v)! : fallback;
+    let shownKey = "";
+    const syncLabels = () => {
+      const zoom = (instance.getOption().dataZoom as { startValue?: unknown; endValue?: unknown }[] | undefined)?.[0];
+      const start = toIndex(zoom?.startValue, 0);
+      const end = toIndex(zoom?.endValue, periods.length - 1);
+      const visible = labelled.map((l) => { const i = lastIndex.get(l.key)!; return i >= start && i <= end; });
+      const key = visible.map((v) => (v ? 1 : 0)).join("");
+      if (key === shownKey) return;
+      shownKey = key;
+      instance.setOption({ series: labelled.map((l, i) => ({ id: l.key, endLabel: { show: visible[i] } })) });
+    };
+    syncLabels();
+    instance.on("datazoom", syncLabels);
+    return () => { instance.off("datazoom", syncLabels); };
+  }, [lines, periods, unit, precision, showBands, showIntervals, lastFact, asofPeriod, asofDate, initialStart, initialEnd, byKey]);
 
   return <div ref={box} className="echart" role="img" aria-label={unit} />;
 });
