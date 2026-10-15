@@ -49,6 +49,6 @@ extend-immutable-calls = ["typer.Argument", "typer.Option"]
 testpaths = ["tests"]
 
 [tool.uv]
-# iCloud marks files inside .venv as hidden and Python 3.12 skips hidden .pth files.
-# On such machines keep .venv as a symlink to a folder outside iCloud (see README).
+# Copy packages into the environment instead of linking them: some synced folders mark linked
+# files as hidden, and Python 3.12 skips hidden .pth files.
 link-mode = "copy"
