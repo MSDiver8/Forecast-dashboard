@@ -392,73 +392,12 @@ def news_block(con, catalog: Catalog) -> dict | None:
     }
 
 
-def evaluation(con, catalog: Catalog, indicator_id: str, area_id: str, frequency: str) -> dict:
-    """Errors of published forecasts against the latest actuals, by release and by horizon."""
-    data = pair_series(con, catalog, indicator_id, area_id, frequency)
-    if not data["actual"]:
-        return {"actual": None, "sources": []}
-    fact = {p["period"]: p["value"] for p in data["actual"]["releases"][-1]["points"]}
-    out = []
-    for source in data["sources"]:
-        releases, by_horizon = [], defaultdict(list)
-        for release in source["releases"]:
-            vintage_period = period_of(release["vintage_date"], frequency)
-            errors = []
-            for p in release["points"]:
-                if p["kind"] != "forecast" or p["period"] not in fact:
-                    continue
-                error = p["value"] - fact[p["period"]]
-                horizon = _steps_between(vintage_period, p["period"])
-                errors.append(
-                    {
-                        "period": p["period"],
-                        "forecast": p["value"],
-                        "actual": fact[p["period"]],
-                        "error": error,
-                        "horizon": horizon,
-                    }
-                )
-                by_horizon[horizon].append(error)
-            if errors:
-                abs_errors = [abs(e["error"]) for e in errors]
-                releases.append(
-                    {
-                        "release_id": release["release_id"],
-                        "title": release["title"],
-                        "vintage_date": release["vintage_date"],
-                        "points": errors,
-                        "mae": sum(abs_errors) / len(abs_errors),
-                        "rmse": (sum(e["error"] ** 2 for e in errors) / len(errors)) ** 0.5,
-                        "bias": sum(e["error"] for e in errors) / len(errors),
-                    }
-                )
-        horizons = [
-            {"horizon": h, "n": len(v), "mae": sum(abs(e) for e in v) / len(v), "bias": sum(v) / len(v)}
-            for h, v in sorted(by_horizon.items())
-        ]
-        out.append(
-            {
-                **{k: source[k] for k in ("source_id", "short", "color", "organization", "name")},
-                "releases": releases,
-                "horizons": horizons,
-            }
-        )
-    return {"actual": {k: data["actual"][k] for k in ("source_id", "short")}, "sources": out}
-
-
 def period_of(day: date, frequency: str) -> str:
     if frequency == "M":
         return f"{day.year:04d}-{day.month:02d}"
     if frequency == "Q":
         return f"{day.year:04d}-Q{(day.month - 1) // 3 + 1}"
     return f"{day.year:04d}"
-
-
-def _steps_between(start: str, end: str) -> int:
-    for k in range(-5, 400):
-        if periods.shift(start, k) == end:
-            return k
-    return 0
 
 
 def sources_registry(con, catalog: Catalog) -> list[dict]:
@@ -472,8 +411,11 @@ def sources_registry(con, catalog: Catalog) -> list[dict]:
     ).fetchall()
     titles = {}
     for f in catalog.featured:
+        shown = {f.indicator} | (
+            {f.context.indicator} if f.context else set()
+        )  # context: the finer actuals line
         for s in catalog.series:
-            if (s.indicator, s.area) == (f.indicator, f.area):
+            if s.indicator in shown and s.area == f.area:
                 titles.setdefault(s.source, []).append(f.title)
     result = []
     for source_id, role, lic, access, count, first, last in rows:

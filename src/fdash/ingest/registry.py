@@ -25,6 +25,7 @@ MODULES = [
     "spf_philly",
     "fannie_mae",
     "td_economics",
+    "rosstat_gdp_q",
 ]
 
 CONNECTORS: dict[str, Connector] = {}

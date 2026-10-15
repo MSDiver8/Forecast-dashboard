@@ -14,6 +14,7 @@ featured:
     short: "Brent"
     subtitle: "средняя за период, номинальная"
     description: "Средняя цена нефти Brent, долл. за баррель. Прогноз EIA, Всемирного банка, рыночные предпосылки ЕЦБ и Банка Англии, опрос аналитиков Банка России."
+    context: {indicator: brent_price, frequency: M, label: "средняя цена за месяц"}
   - id: ru-inflation
     indicator: cpi_dec
     area: RU
@@ -23,6 +24,7 @@ featured:
     short: "Инфляция РФ"
     subtitle: "декабрь к декабрю предыдущего года"
     description: "Рост потребительских цен в декабре к декабрю предыдущего года, %. Прогноз Банка России, консенсус аналитиков и МВФ."
+    context: {indicator: cpi_yoy_m, frequency: M, label: "инфляция за месяц к тому же месяцу прошлого года"}
   - id: ru-key-rate
     indicator: key_rate_avg
     area: RU
@@ -32,6 +34,7 @@ featured:
     short: "Ключевая ставка"
     subtitle: "в среднем за год с учётом выходных дней"
     description: "Средняя ключевая ставка за год с учётом выходных, % годовых. Траектория Банка России против ожиданий аналитиков."
+    context: {indicator: key_rate_avg, frequency: M, label: "средняя ставка за месяц"}
   - id: ru-gdp
     indicator: gdp_growth
     area: RU
@@ -41,6 +44,7 @@ featured:
     short: "ВВП РФ"
     subtitle: "реальный ВВП к предыдущему году"
     description: "Темп роста реального ВВП, % к предыдущему году. Прогноз Банка России, консенсус аналитиков и МВФ."
+    context: {indicator: gdp_yoy_q, frequency: Q, label: "рост за квартал к тому же кварталу прошлого года (Росстат)"}
   - id: us-gdp
     indicator: gdp_qoq_saar
     area: US
@@ -80,6 +84,7 @@ featured:
     short: "Инфляция ЕЗ"
     subtitle: "HICP, в среднем за год к предыдущему году; еврозона в меняющемся составе"
     description: "Гармонизированный индекс потребительских цен (HICP), % в среднем за год. Прогноз ЕЦБ, опрос профессиональных прогнозистов SPF и МВФ."
+    context: {indicator: cpi_yoy_m, frequency: M, label: "HICP за месяц к тому же месяцу прошлого года"}
 
 # Start page announcement: the indicator, a short text and the sources whose newest release is drawn.
 news:
@@ -95,7 +100,8 @@ source_info:
   eia_brent_spot: {short: "Факт (EIA)", color: "#62b4dc", description: "Спотовая цена Brent FOB, ряд RBRTE. Месячные и годовые средние."}
   cbr_stats: {short: "Факт (Банк России)", color: "#62b4dc", description: "Инфляция — данные Росстата в публикации Банка России; ключевая ставка — дневные значения, среднее по календарным дням."}
   wb_wdi: {short: "Факт (Росстат/WDI)", color: "#62b4dc", description: "Рост реального ВВП России по данным Росстата в базе World Development Indicators."}
-  eurostat_hicp: {short: "Факт (Евростат)", color: "#62b4dc", description: "HICP еврозоны, среднегодовой темп (prc_hicp_aind)."}
+  eurostat_hicp: {short: "Факт (Евростат)", color: "#62b4dc", description: "HICP еврозоны: среднегодовой темп (prc_hicp_ainr) и темп за месяц к тому же месяцу прошлого года (prc_hicp_minr), ECOICOP ver. 2."}
+  rosstat_gdp_q: {short: "Факт (Росстат)", color: "#62b4dc", description: "ВВП России по кварталам: индекс физического объёма к соответствующему кварталу предыдущего года."}
   eia_steo: {short: "EIA", color: "#ed7b24", description: "Ежемесячный прогноз Short-Term Energy Outlook. Годовые и квартальные значения — средние месяцев выпуска.", caveat: "Публикует только месячные значения."}
   wb_cmo: {short: "Всемирный банк", color: "#168443", description: "Commodity Markets Outlook, выходит в апреле и октябре; годовые средние."}
   ecb_mpd: {short: "ЕЦБ", color: "#245285", description: "Предпосылка по цене нефти в макропрогнозах Евросистемы и ЕЦБ (4 раза в год).", caveat: "Рыночная предпосылка по фьючерсам Brent, а не собственный прогноз."}
@@ -161,6 +167,15 @@ indicators:
     groups: [A, B]
     precision: 1
     actual_sources: {EA: eurostat_hicp}
+  - id: cpi_yoy_m
+    name: "Инфляция, месяц к тому же месяцу прошлого года"
+    unit: "% к тому же месяцу прошлого года"
+    transform: yoy_m
+    base: "индекс потребительских цен за месяц к тому же месяцу прошлого года; в декабре — декабрь к декабрю; еврозона — HICP"
+    groups: [A, B]
+    precision: 1
+    averageable: false
+    actual_sources: {RU: cbr_stats, EA: eurostat_hicp}
   - id: cpi_dec
     name: "Инфляция, декабрь к декабрю"
     unit: "% к декабрю предыдущего года"
@@ -221,7 +236,7 @@ indicators:
     groups: [Q]
     precision: 1
     averageable: false
-    actual_sources: {GB: ons_gdp}
+    actual_sources: {GB: ons_gdp, RU: rosstat_gdp_q}
   - id: cpi_yoy_q
     name: "Инфляция, квартал к тому же кварталу прошлого года"
     unit: "%, к тому же кварталу прошлого года"
@@ -298,6 +313,9 @@ series:
      note: "Данные Росстата, публикуемые Банком России"}
   - {source: cbr_stats, code: "KeyRateXML", indicator: key_rate_avg, area: RU,
      note: "Среднее по календарным дням; в выходные — последняя установленная ставка"}
+  - {source: cbr_stats, code: "infl.xlsx: Инфляция, % г/г", indicator: cpi_yoy_m, area: RU,
+     note: "Данные Росстата, публикуемые Банком России"}
+  - {source: rosstat_gdp_q, code: "Индексы физического объёма ВВП, к соответствующему кварталу", indicator: gdp_yoy_q, area: RU}
   # Bank of Russia medium-term forecast
   - {source: cbr_mtf, code: "Инфляция, дек. к дек.", indicator: cpi_dec, area: RU, note: "Диапазон; линия — середина"}
   - {source: cbr_mtf, code: "Инфляция, в среднем за год", indicator: cpi_avg, area: RU, note: "Диапазон; линия — середина"}
@@ -306,7 +324,8 @@ series:
   # ECB SPF, euro area
   - {source: ecb_spf, code: "HICP.POINT", indicator: cpi_avg, area: EA, note: "HICP; среднее ожиданий участников"}
   # Reference actuals
-  - {source: eurostat_hicp, code: "prc_hicp_aind RCH_A_AVG", indicator: cpi_avg, area: EA}
+  - {source: eurostat_hicp, code: "prc_hicp_ainr RCH_A_AVG", indicator: cpi_avg, area: EA}
+  - {source: eurostat_hicp, code: "prc_hicp_minr RCH_A", indicator: cpi_yoy_m, area: EA}
   - {source: wb_wdi, code: "NY.GDP.MKTP.KD.ZG", indicator: gdp_growth, area: RU}
   # US real GDP, quarter on quarter at annual rate
   - {source: bea_nipa, code: "T10101 A191RL", indicator: gdp_qoq_saar, area: US}

@@ -102,7 +102,7 @@ export async function downloadChartAsPng(
   URL.revokeObjectURL(url);
 }
 
-const SHORT_MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+export const SHORT_MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 
 /** 2026 -> "2026"; 2026-Q3 -> "III кв. 2026"; 2026-07 -> "июл 2026". */
 export function formatPeriod(period: string): string {

@@ -1,4 +1,4 @@
-"""Bank of Russia statistics as reference actuals: CPI y/y (December = Dec/Dec) and the key rate."""
+"""Bank of Russia statistics as reference actuals: CPI y/y by month (December = Dec/Dec) and the key rate."""
 
 from __future__ import annotations
 
@@ -48,17 +48,34 @@ def read_key_rate(path: Path) -> dict[date, float]:
     return rates
 
 
-def annual_average_calendar_days(rates: dict[date, float], last_day: date) -> dict[str, float]:
-    """Average over calendar days; on days without a record the last set rate applies."""
-    by_year: dict[int, list[float]] = defaultdict(list)
+def _daily(rates: dict[date, float], last_day: date):
+    """Every calendar day from the first record to `last_day` with the rate in force that day."""
     current = None
     day = min(rates)
     while day <= last_day:
         current = rates.get(day, current)
-        by_year[day.year].append(current)
+        yield day, current
         day += timedelta(days=1)
+
+
+def annual_average_calendar_days(rates: dict[date, float], last_day: date) -> dict[str, float]:
+    """Average over calendar days; on days without a record the last set rate applies."""
+    by_year: dict[int, list[float]] = defaultdict(list)
+    for day, rate in _daily(rates, last_day):
+        by_year[day.year].append(rate)
     first_full = min(rates).year + (0 if min(rates) == date(min(rates).year, 1, 1) else 1)
     return {str(y): sum(v) / len(v) for y, v in by_year.items() if first_full <= y < last_day.year}
+
+
+def monthly_average_calendar_days(rates: dict[date, float], last_day: date) -> dict[str, float]:
+    """The same average for each complete month before the month of `last_day`."""
+    by_month: dict[str, list[float]] = defaultdict(list)
+    for day, rate in _daily(rates, last_day):
+        by_month[f"{day.year:04d}-{day.month:02d}"].append(rate)
+    first = min(rates)
+    start = first if first.day == 1 else (first.replace(day=1) + timedelta(days=32)).replace(day=1)
+    first_full, current = f"{start:%Y-%m}", f"{last_day:%Y-%m}"
+    return {month: sum(v) / len(v) for month, v in by_month.items() if first_full <= month < current}
 
 
 class CbrStats(Connector):
@@ -104,10 +121,18 @@ class CbrStats(Connector):
             for period, value in inflation.items()
             if period.endswith("-12")
         ]
+        observations += [
+            Observation("cpi_yoy_m", "RU", period, "M", value, "actual")
+            for period, value in inflation.items()
+        ]
         rates = read_key_rate(raw.parent / "keyrate.xml")
         observations += [
             Observation("key_rate_avg", "RU", year, "A", value, "actual")
             for year, value in annual_average_calendar_days(rates, release.vintage_date).items()
+        ]
+        observations += [
+            Observation("key_rate_avg", "RU", month, "M", value, "actual")
+            for month, value in monthly_average_calendar_days(rates, release.vintage_date).items()
         ]
         return Parsed(observations, data_cutoff=max(inflation) if inflation else None)
 

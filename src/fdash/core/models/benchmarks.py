@@ -55,7 +55,12 @@ MODELS: dict[str, ModelSpec] = {
             "Сезонное блуждание с дрейфом: тот же сезон плюс средний годовой прирост",
             {"window": None},
         ),
-        ModelSpec("ts", "TS", "Линейный тренд по МНК, для сезонных рядов — с сезонными дамми", {"degree": 1}),
+        ModelSpec(
+            "ts",
+            "TS",
+            "Линейный тренд по МНК, для сезонных рядов — с сезонными дамми",
+            {"degree": 1, "window": None},
+        ),
         ModelSpec("ma", "MA", "Скользящее среднее последних q наблюдений", {"q": 3}),
         ModelSpec("arima", "ARIMA", "ARIMA с автоподбором порядка по AICc", {"order": None}),
     ]
@@ -120,8 +125,20 @@ def rwds(y: np.ndarray, h: int, m: int, window: int | None = None) -> Forecast:
     return _band(mean, _sd(yearly - drift), scale, {"annual_drift": drift})
 
 
-def ts(y: np.ndarray, h: int, m: int, seasons: np.ndarray | None = None, degree: int = 1) -> Forecast:
-    """Trend by OLS; `seasons` are calendar season indices of y followed by those of the horizon."""
+def ts(
+    y: np.ndarray,
+    h: int,
+    m: int,
+    seasons: np.ndarray | None = None,
+    degree: int = 1,
+    window: int | None = None,
+) -> Forecast:
+    """Trend by OLS on the last `window` points (all when None); `seasons` are calendar season
+    indices of y followed by those of the horizon."""
+    if window:
+        cut = max(len(y) - window, 0)
+        y = y[cut:]
+        seasons = seasons[cut:] if seasons is not None else None
     n = len(y)
     if n < max(4, (2 * m if m > 1 else 0)):
         raise ModelUnavailable(f"TS: нужно не менее {max(4, 2 * m if m > 1 else 4)} наблюдений")
@@ -202,7 +219,8 @@ def run(
         case "rwds":
             return rwds(y, h, m, params.get("window"))
         case "ts":
-            return ts(y, h, m, seasons, int(params.get("degree", 1)))
+            window = params.get("window")
+            return ts(y, h, m, seasons, int(params.get("degree", 1)), int(window) if window else None)
         case "ma":
             return ma(y, h, int(params.get("q", 3)))
         case "arima":

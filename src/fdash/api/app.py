@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import io
-import json
-from datetime import date, datetime
+from datetime import date
 from typing import Literal
 
-import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -21,7 +18,7 @@ from fdash import settings
 from fdash.core import catalog as catalog_mod
 from fdash.core import periods
 from fdash.core.models import benchmarks
-from fdash.store import db, queries
+from fdash.store import accuracy, db, model_runs, queries
 
 app = FastAPI(title="Forecast dashboard API", version="0.2.0")
 app.add_middleware(
@@ -108,11 +105,40 @@ def series(featured_id: str, frequency: Literal["A", "Q", "M"] | None = None) ->
     return {"featured": item.model_dump(), "indicator": indicator.model_dump(), "frequency": freq, **data}
 
 
-@app.get("/api/evaluation/{featured_id}")
-def evaluation(featured_id: str, frequency: Literal["A", "Q", "M"] | None = None) -> dict:
+class EvaluationModel(BaseModel):
+    code: str
+    params: dict = Field(default_factory=dict)
+
+
+class EvaluationRequest(BaseModel):
+    featured: str
+    frequency: Literal["A", "Q", "M"] | None = None
+    window: int | None = Field(None, ge=0, le=3)
+    fact: Literal["latest", "first"] = "latest"
+    sources: list[str] | None = None  # None — every agency
+    models: list[EvaluationModel] = Field(default_factory=list)
+    model_frequency: Literal["A", "Q", "M"] | None = None
+    period: str | None = None
+    evolution: bool = False  # the path of forecasts for `period` by publication date
+
+
+@app.post("/api/evaluation")
+def evaluation(req: EvaluationRequest) -> dict:
     cat = catalog_mod.load()
-    item = _featured(cat, featured_id)
-    return queries.evaluation(_con(), cat, item.indicator, item.area, frequency or item.frequency)
+    item = _featured(cat, req.featured)
+    return accuracy.evaluation(
+        _con(),
+        cat,
+        item,
+        req.frequency or item.frequency,
+        req.window,
+        req.fact,
+        req.sources,
+        [(m.code, m.params) for m in req.models],
+        req.model_frequency,
+        req.period,
+        evolution=req.evolution,
+    )
 
 
 @app.get("/api/sources")
@@ -163,85 +189,33 @@ def run_model(req: ModelRequest) -> dict:
     points = [p for p in points if not req.cutoff or p[0] <= req.cutoff]
     if not points:
         raise HTTPException(422, "До точки отсечения нет наблюдений")
-    origin = points[-1][0]
-    key = json.dumps(
-        [
+    try:
+        result = model_runs.run(
+            _con(),
             req.model,
             req.params,
             item.indicator,
             item.area,
             req.frequency,
-            origin,
+            points,
             actual_release,
             req.horizon,
-        ],
-        sort_keys=True,
-        default=str,
-    )
-    run_id = hashlib.sha1(key.encode()).hexdigest()[:16]
-    con = _con()
-    cached = con.execute(
-        "SELECT target_period, value, lower80, upper80, lower95, upper95 FROM benchmark_forecasts "
-        "WHERE run_id = ? ORDER BY target_period",
-        [run_id],
-    ).fetchall()
-    if cached:
-        params = con.execute("SELECT params FROM benchmark_runs WHERE run_id = ?", [run_id]).fetchone()
-        info = json.loads(params[0]).get("info", {}) if params else {}
-    else:
-        y = np.array([v for _, v in points])
-        m = periods.SEASON[req.frequency]
-        future = [periods.shift(origin, k) for k in range(1, req.horizon + 1)]
-        seasons = np.array(
-            [periods.season_index(p) for p, _ in points] + [periods.season_index(p) for p in future]
         )
-        try:
-            fc = benchmarks.run(req.model, y, req.horizon, m, req.params, seasons)
-        except benchmarks.ModelUnavailable as exc:
-            raise HTTPException(422, str(exc)) from exc
-        info = fc.info
-        con.execute(
-            "INSERT OR IGNORE INTO benchmark_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                run_id,
-                req.model,
-                json.dumps({**req.params, "horizon": req.horizon, "info": info}, default=str),
-                item.indicator,
-                item.area,
-                req.frequency,
-                origin,
-                actual_release,
-                datetime.now(),
-            ],
-        )
-        cached = [
-            (
-                future[k],
-                float(fc.mean[k]),
-                float(fc.lo80[k]),
-                float(fc.hi80[k]),
-                float(fc.lo95[k]),
-                float(fc.hi95[k]),
-            )
-            for k in range(req.horizon)
-        ]
-        con.executemany(
-            "INSERT OR IGNORE INTO benchmark_forecasts VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [(run_id, *row) for row in cached],
-        )
+    except benchmarks.ModelUnavailable as exc:
+        raise HTTPException(422, str(exc)) from exc
     spec = benchmarks.MODELS[req.model]
     return {
-        "run_id": run_id,
+        "run_id": result.run_id,
         "model": req.model,
         "name": spec.name,
         "description": spec.description,
-        "origin": origin,
+        "origin": result.origin,
         "anchor": points[-1][1],
         "actual_release": actual_release,
-        "info": info,
+        "info": result.info,
         "points": [
             {"period": p, "value": v, "lower80": l8, "upper80": u8, "lower95": l9, "upper95": u9}
-            for p, v, l8, u8, l9, u9 in cached
+            for p, v, l8, u8, l9, u9 in result.rows
         ],
     }
 

@@ -124,25 +124,122 @@ export interface ModelRun {
   points: { period: string; value: number; lower80: number; upper80: number; lower95: number; upper95: number }[];
 }
 
+export interface EvalForecast { vintage_date: string; value: number; title: string; approx: boolean }
+
+export interface EvalPick extends EvalForecast { error: number | null }
+
+export interface EvalModelValue { value: number; error: number | null }
+
+export interface EvalSource {
+  source_id: string;
+  short: string;
+  name: string;
+  organization: string;
+  color: string;
+  releases: number;
+  first_vintage: string;
+  last_vintage: string;
+  selected: boolean;
+}
+
+export interface EvalModel {
+  code: string;
+  name: string;
+  description: string;
+  selected: boolean;
+  params: { window?: number; q?: number };
+  unavailable: { reason: "seasonal" | "short" | "fact"; need?: number; have?: number } | null;
+}
+
+export interface EvalRow {
+  period: string;
+  window_start: string;
+  window_end: string;
+  fact: number | null;
+  picks: Record<string, EvalPick>;
+  models: Record<string, EvalModelValue>;
+  rw_error: number | null;
+}
+
+export interface EvalMetric {
+  kind: "source" | "model";
+  key: string;
+  n: number;
+  mae: number;
+  rmse: number;
+  me: number;
+  mape: number | null;
+  ratio_rw: number | null;
+  errors: number[];
+}
+
+export interface EvalPeriod {
+  period: string;
+  start: string;
+  end: string;
+  fact: number | null;
+  windows: { start: string; end: string }[];
+}
+
+export interface EvalEvolution {
+  period: string;
+  start: string;
+  end: string;
+  fact: number | null;
+  window: { start: string; end: string };
+  tracks: Record<string, EvalForecast[]>;
+  models: Record<string, { date: string; value: number }[]>;
+}
+
+export type FactMode = "latest" | "first";
+
 export interface Evaluation {
-  actual: { source_id: string; short: string } | null;
-  sources: {
-    source_id: string;
-    short: string;
-    color: string;
-    organization: string;
-    name: string;
-    horizons: { horizon: number; n: number; mae: number; bias: number }[];
-    releases: {
-      release_id: string;
-      title: string;
-      vintage_date: string;
-      mae: number;
-      rmse: number;
-      bias: number;
-      points: { period: string; forecast: number; actual: number; error: number; horizon: number }[];
-    }[];
-  }[];
+  featured: string;
+  frequency: Frequency;
+  unit: string;
+  value_unit: string;
+  error_unit: string;
+  transform: string;
+  fact_shape: "point" | "segment";
+  actual: {
+    source_id: string; short: string; name: string; organization: string;
+    versions: number; first_vintage: string; last_vintage: string;
+  } | null;
+  fact_mode: FactMode;
+  window: number;
+  window_count: number;
+  sources: EvalSource[];
+  models: EvalModel[];
+  estimation: {
+    frequency: Frequency | null;
+    convert: "same" | "mean" | "december" | null;
+    options: { frequency: Frequency; convert: "same" | "mean" | "december" }[];
+  };
+  periods: EvalPeriod[];
+  context: { label: string; frequency: Frequency; points: { period: string; date: string; value: number }[] } | null;
+  rows: EvalRow[];
+  metrics: {
+    comparable: boolean;
+    min_periods: number;
+    mape_min_actual: number;
+    periods: string[];
+    contiguous: boolean;
+    rows: EvalMetric[];
+    insufficient: { kind: "source" | "model"; key: string; n: number }[];
+  };
+  evolution: EvalEvolution | null;
+}
+
+export interface EvaluationRequest {
+  featured: string;
+  frequency: Frequency;
+  window: number | null;
+  fact: FactMode;
+  sources: string[] | null;
+  models: { code: string; params: { window?: number; q?: number } }[];
+  model_frequency: Frequency | null;
+  period: string | null;
+  evolution: boolean;
 }
 
 export interface RegistrySource extends SourceMeta {

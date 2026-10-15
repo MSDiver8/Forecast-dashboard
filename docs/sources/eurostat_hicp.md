@@ -1,8 +1,10 @@
 # Евростат: HICP еврозоны (факт)
 
-- **Роль:** эталонный факт для «Инфляция в еврозоне, HICP, в среднем за год».
-- **API:** `https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/prc_hicp_aind?geo=EA&coicop=CP00&unit=RCH_A_AVG&format=JSON&lang=en` — JSON-stat 2.0, без ключа. Проверено 8 октября 2026: ответ 200, поле `updated` = 2026-02-06, ряд 1997–2025.
-- **Ряд:** `prc_hicp_aind` — HICP, годовые данные; `unit = RCH_A_AVG` (annual average rate of change), `coicop = CP00` (all-items), `geo = EA` — еврозона в меняющемся составе (EA11-1999 … EA21-2026), как `U2` у ЕЦБ.
-- **Винтажи:** архива версий в API нет; выпуск — дата `updated` из ответа; новый выпуск появляется, когда Евростат обновляет набор.
+- **Роль:** эталонный факт для «Инфляция в еврозоне, HICP, в среднем за год»; месячный темп — линия факта на вкладке «Оценка точности».
+- **Классификация:** с февраля 2026 года Евростат публикует HICP по ECOICOP ver. 2. Наборы ECOICOP ver. 1 (`prc_hicp_aind`, `prc_hicp_manr`) заморожены: проверено 14 октября 2026 — `updated` = 2026-02-06, данные по 2025 год. Текущие наборы: `prc_hicp_ainr` (годовой, обновлён 17.09.2026) и `prc_hicp_minr` (месячный, обновлён 02.10.2026, данные по сентябрь 2026 года).
+- **Годовой ряд:** `https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/prc_hicp_ainr?geo=EA&coicop18=TOTAL&unit=RCH_A_AVG&format=JSON&lang=en` — JSON-stat 2.0, без ключа; `unit = RCH_A_AVG` (annual average rate of change), `coicop18 = TOTAL`. Ряд 1997–2025; значения совпадают с `prc_hicp_aind` (2022 — 8,4; 2025 — 2,1).
+- **Месячный ряд:** `…/prc_hicp_minr?geo=EA&coicop18=TOTAL&unit=RCH_A&format=JSON&lang=en` — annual rate of change, с января 1997 года. Определение отличается от годового показателя (темп за месяц к тому же месяцу прошлого года против среднегодового темпа), поэтому ряд служит только линией факта; ошибки считаются от годового значения.
+- **Еврозона:** `geo = EA` — в меняющемся составе (EA11-1999 … EA21-2026), как `U2` у ЕЦБ.
+- **Винтажи:** архива версий в API нет; выпуск — более поздняя из дат `updated` двух наборов, оба файла лежат в папке выпуска; новый выпуск сохраняется, только если изменился хотя бы один файл. Выпуски до октября 2026 года содержат только `prc_hicp_aind` и читаются как раньше.
 - **Лицензия:** Eurostat, повторное использование с указанием источника (Commission Decision 2011/833/EU).
-- **Образец:** `tests/fixtures/eurostat_hicp/prc_hicp_aind_EA.json`.
+- **Образцы:** `tests/fixtures/eurostat_hicp/prc_hicp_ainr_EA.json`, `prc_hicp_minr_EA.json`, прежний `prc_hicp_aind_EA.json`.

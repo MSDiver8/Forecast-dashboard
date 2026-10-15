@@ -5,18 +5,21 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import ssl
 import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
+import certifi
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from fdash import settings
 
 USER_AGENT = "fdash/0.1 (forecast dashboard; local research use)"
+RUSSIAN_CA = Path(__file__).parent / "certs" / "russian_trusted_ca.pem"
 
 
 @dataclass(frozen=True)
@@ -110,9 +113,19 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def client() -> httpx.Client:
+def russian_trust() -> ssl.SSLContext:
+    """The usual trust store plus the Russian Trusted Root CA: rosstat.gov.ru is signed by it."""
+    context = ssl.create_default_context(cafile=certifi.where())
+    context.load_verify_locations(cafile=RUSSIAN_CA)
+    return context
+
+
+def client(verify: ssl.SSLContext | bool = True) -> httpx.Client:
     return httpx.Client(
-        headers={"User-Agent": USER_AGENT}, timeout=httpx.Timeout(180, connect=30), follow_redirects=True
+        headers={"User-Agent": USER_AGENT},
+        timeout=httpx.Timeout(180, connect=30),
+        follow_redirects=True,
+        verify=verify,
     )
 
 
@@ -122,8 +135,8 @@ def client() -> httpx.Client:
     wait=wait_exponential(multiplier=2, max=30),
     reraise=True,
 )
-def http_get(url: str, **kwargs) -> httpx.Response:
-    with client() as http:
+def http_get(url: str, verify: ssl.SSLContext | bool = True, **kwargs) -> httpx.Response:
+    with client(verify) as http:
         response = http.get(url, **kwargs)
         if response.status_code >= 500:
             response.raise_for_status()

@@ -49,3 +49,15 @@ def test_export_csv(client):
         "/api/export", json={"title": "t", "columns": ["a", "b"], "rows": [[1, 2]], "format": "csv"}
     )
     assert response.status_code == 200 and response.text.startswith("﻿a;b")
+
+
+def test_evaluation_post(client):
+    body = client.post(
+        "/api/evaluation",
+        json={"featured": "x", "window": 2, "fact": "first", "models": [{"code": "rw"}], "sources": ["fc"]},
+    ).json()
+    assert body["window"] == 2 and body["fact_mode"] == "first"
+    assert [s["source_id"] for s in body["sources"] if s["selected"]] == ["fc"]
+    assert next(m for m in body["models"] if m["code"] == "rw")["selected"]
+    assert client.post("/api/evaluation", json={"featured": "x", "window": 9}).status_code == 422
+    assert client.post("/api/evaluation", json={"featured": "x", "fact": "other"}).status_code == 422

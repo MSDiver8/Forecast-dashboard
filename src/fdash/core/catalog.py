@@ -50,6 +50,14 @@ class Series(BaseModel):
     caveat: str | None = None  # shown under the chart for this indicator only, instead of the source caveat
 
 
+class Context(BaseModel):
+    """A finer actual series drawn under the target-period actuals on the accuracy tab."""
+
+    indicator: str
+    frequency: str
+    label: str
+
+
 class Featured(BaseModel):
     id: str
     indicator: str
@@ -61,6 +69,7 @@ class Featured(BaseModel):
     subtitle: str | None = None
     description: str
     added: date | None = None  # when the indicator appeared in the dashboard ("Новое" on the start page)
+    context: Context | None = None
 
 
 class SourceInfo(BaseModel):
@@ -108,6 +117,8 @@ def load(path: Path | None = None) -> Catalog:
     for f in catalog.featured:
         if f.indicator not in ids or f.area not in areas:
             raise ValueError(f"Unknown indicator or area in featured: {f.id}")
+        if f.context and f.context.indicator not in ids:
+            raise ValueError(f"Unknown context indicator in featured: {f.id}")
     if catalog.news and catalog.news.featured not in {f.id for f in catalog.featured}:
         raise ValueError(f"Unknown featured indicator in news: {catalog.news.featured}")
     return catalog

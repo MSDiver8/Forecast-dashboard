@@ -1,4 +1,4 @@
-import type { Evaluation, Frequency, ModelRun, ModelSpec, Overview, RegistrySource, SeriesResponse } from "./types";
+import type { Evaluation, EvaluationRequest, Frequency, ModelRun, ModelSpec, Overview, RegistrySource, SeriesResponse } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
@@ -18,7 +18,9 @@ export const api = {
   overview: () => request<Overview>("/api/featured"),
   series: (id: string, frequency?: Frequency) =>
     request<SeriesResponse>(`/api/series/${id}${frequency ? `?frequency=${frequency}` : ""}`),
-  evaluation: (id: string, frequency: Frequency) => request<Evaluation>(`/api/evaluation/${id}?frequency=${frequency}`),
+  evaluation: (body: EvaluationRequest) => request<Evaluation>("/api/evaluation", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  }),
   sources: () => request<RegistrySource[]>("/api/sources"),
   models: () => request<ModelSpec[]>("/api/models"),
   runModel: (body: {

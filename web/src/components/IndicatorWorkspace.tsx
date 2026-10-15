@@ -169,7 +169,7 @@ export function IndicatorWorkspace({ id, featured, onSelect, onBack }: Props) {
         )}
       </div>
 
-      {tab === "accuracy" ? <Accuracy id={id} frequency={frequency} precision={indicator.precision} /> : (
+      {tab === "accuracy" ? <Accuracy key={`${id}_${frequency}`} id={id} frequency={frequency} name={item.title} /> : (
         <>
           <section className="comparison-layout">
             <aside className="comparison-controls">
@@ -291,7 +291,7 @@ export function IndicatorWorkspace({ id, featured, onSelect, onBack }: Props) {
               <div className="chart-panel__heading">
                 <div>
                   <p className="eyebrow">{t("ws.chartEyebrow")}</p>
-                  <h2>{t("ws.chartTitle", { name: item.short })}</h2>
+                  <h2>{t("ws.chartTitle", { name: item.title })}</h2>
                   <span>{indicator.unit} · {t(`freq.${frequency}`).toLowerCase()} · {t("ws.zoomHint")}</span>
                 </div>
                 <div className="chart-tools">
