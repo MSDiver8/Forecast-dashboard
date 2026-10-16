@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 from fdash.ingest.base import Connector, Observation, Parsed, Release, SourceStructureError, http_get
@@ -16,6 +16,7 @@ API = "https://data-api.ecb.europa.eu/service/data/SPF/Q.U2.HICP.POINT..Q.AVG"
 REPORT = "https://www.ecb.europa.eu/stats/ecb_surveys/survey_of_professional_forecasters/html/ecb.spf{year}q{q}.en.html"
 ONLINE_DATE = re.compile(r'citation_online_date"\s+content="(\d{1,2} [A-Z][a-z]+ \d{4})"')
 ROUND = re.compile(r"^(\d{4})-Q([1-4])$")
+FIRST_ROUND = date(1999, 1, 1)  # the survey started in 1999 Q1
 
 
 def report_date(html: str) -> date | None:
@@ -39,7 +40,7 @@ class EcbSpf(Connector):
     access = "SDMX REST API без ключа"
 
     def list_releases(self) -> list[Release]:
-        since = date.today() - timedelta(days=365 * 5 + 92)
+        since = FIRST_ROUND  # the whole history of the survey
         rows = parse_rows(get_csv(f"{API}?format=csvdata&detail=dataonly&startPeriod={since.year}-Q1"))
         rounds = sorted(
             {r["TIME_PERIOD"] for r in rows if ROUND.match(r["TIME_PERIOD"]) and r["FCT_HORIZON"].isdigit()}

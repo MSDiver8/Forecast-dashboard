@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import pdfplumber
@@ -24,6 +24,11 @@ NUM = r"\(?[+-]?\d+(?:,\d)?\)?"
 CELL = re.compile(rf"^({NUM})(?:[-–]({NUM}))?(\d?)$")
 NEGATIVE_RANGE = re.compile(rf"^-\(({NUM})[-–]({NUM})\)(\d?)$")  # '-(8,0-10,0)': a fall of 8-10%
 YEAR = re.compile(r"\b(20\d{2})\b")
+# March and June 2019: a table of scenarios, the base one first; later only the base scenario.
+TITLES = ("Основные параметры прогноза Банка России", "Основные параметры прогнозных сценариев Банка России")
+BASE_FIRST = re.compile(r"\b20\d{2}\s+БАЗОВЫЙ\b")
+# The key rate forecast is published from April 2021.
+REQUIRED = {"cpi_dec", "gdp_growth"}
 MONTHS_RU = [
     "январь",
     "февраль",
@@ -74,9 +79,14 @@ def parse_table(text: str) -> tuple[list[str], dict[str, list[tuple[float, float
     )
     if first_row is None:
         raise SourceStructureError("forecast table rows not found")
-    years = YEAR.findall(" ".join(line for line in lines[:first_row] if "заседания" not in line))
+    header = " ".join(line for line in lines[:first_row] if "заседания" not in line)
+    years = YEAR.findall(header)
     if len(years) < 3:
         raise SourceStructureError(f"header years not found: {years}")
+    # the columns of an alternative scenario repeat the forecast years: only the base scenario is kept
+    base = next((k for k in range(2, len(years)) if years[k] in years[1:k]), len(years))
+    if base < len(years) and not BASE_FIRST.search(header):
+        raise SourceStructureError(f"the first scenario is not the base one: {header!r}")
     table: dict[str, list[tuple[float, float | None, float | None]]] = {}
     for line in lines[first_row:]:
         for label, indicator_id in ROWS.items():
@@ -85,11 +95,11 @@ def parse_table(text: str) -> tuple[list[str], dict[str, list[tuple[float, float
             tokens = line[len(label) :].split()
             if len(tokens) != len(years):
                 raise SourceStructureError(f"{label}: {len(tokens)} values for {len(years)} years: {tokens}")
-            table[indicator_id] = [parse_cell(token) for token in tokens]
-    missing = {"cpi_dec", "key_rate_avg", "gdp_growth"} - set(table)
+            table[indicator_id] = [parse_cell(token) for token in tokens[:base]]
+    missing = REQUIRED - set(table)
     if missing:
         raise SourceStructureError(f"rows not found: {sorted(missing)}")
-    return years, table
+    return years[:base], table
 
 
 class CbrMtf(Connector):
@@ -98,7 +108,7 @@ class CbrMtf(Connector):
     organization = "Банк России"
     url = f"{BASE}/dkp/mp_dec/decision_key_rate/"
     license = "Материалы сайта Банка России, со ссылкой на источник"
-    access = "PDF по итогам опорных заседаний (исключение из критерия 1, ТЗ 4.1)"
+    access = "PDF по итогам опорных заседаний"
 
     def list_releases(self) -> list[Release]:
         links: dict[date, str] = {}
@@ -107,7 +117,7 @@ class CbrMtf(Connector):
             response.raise_for_status()
             for day, url in list_links(response.text).items():
                 links.setdefault(day, url)
-        since = date.today() - timedelta(days=365 * 5 + 31)
+        since = date(2019, 1, 1)  # the archive of the medium-term forecast starts in March 2019
         return [
             Release(
                 release_id=f"cbr_mtf_{day:%Y_%m_%d}",
@@ -124,7 +134,7 @@ class CbrMtf(Connector):
     def parse(self, raw: Path, release: Release) -> Parsed:
         with pdfplumber.open(raw) as pdf:
             text = pdf.pages[0].extract_text() or ""
-        if "Основные параметры прогноза Банка России" not in text:
+        if not any(title in text for title in TITLES):
             raise SourceStructureError(f"{raw.name}: forecast table title not found")
         years, table = parse_table(text)
         observations = [

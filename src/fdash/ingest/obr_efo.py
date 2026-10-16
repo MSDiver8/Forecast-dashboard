@@ -14,13 +14,15 @@ from fdash.ingest.base import (
     Parsed,
     Release,
     SourceStructureError,
-    archive_start,
     client,
+    download,
     quarter_of,
 )
 from fdash.ingest.registry import register
 
 BASE = "https://obr.uk"
+# Detailed economy tables are published at the current address from March 2024; earlier EFOs answer 404.
+TABLES_FROM = date(2024, 3, 1)
 MONTHS = [
     "january",
     "february",
@@ -110,6 +112,12 @@ def last_complete_quarter(month: str) -> str:
     return f"{year:04d}-Q{m // 3}"
 
 
+def is_xlsx(path: Path) -> bool:
+    """An XLSX file is a zip archive."""
+    with path.open("rb") as f:
+        return f.read(2) == b"PK"
+
+
 class ObrEfo(Connector):
     source_id = "obr_efo"
     name = "Economic and fiscal outlook: detailed forecast tables, economy"
@@ -119,7 +127,7 @@ class ObrEfo(Connector):
     access = "XLSX по ссылке со страницы выпуска EFO"
 
     def list_releases(self) -> list[Release]:
-        start = archive_start(2)
+        start = TABLES_FROM
         today = date.today()
         releases = []
         with client() as http:
@@ -141,6 +149,14 @@ class ObrEfo(Connector):
                     )
                 year, month = (year + 1, 1) if month == 12 else (year, month + 1)
         return releases
+
+    def fetch(self, release: Release) -> Path:
+        path = download(release.url, release.raw_path)
+        if not is_xlsx(path):
+            # on 15 October 2026 the site once answered with an HTML "No Access" page instead of the file
+            path.unlink()
+            raise SourceStructureError(f"{release.url}: the answer is not an XLSX file")
+        return path
 
     def parse(self, raw: Path, release: Release) -> Parsed:
         cpi, growth, outturn = read_tables(load_workbook(raw, data_only=True))

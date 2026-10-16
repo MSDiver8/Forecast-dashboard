@@ -13,7 +13,6 @@ from fdash.ingest.base import (
     Parsed,
     Release,
     SourceStructureError,
-    archive_start,
     http_get,
     projection_kind,
 )
@@ -72,18 +71,15 @@ class CboEcon(Connector):
     organization = "CBO"
     url = "https://github.com/US-CBO/cbo-data"
     license = "Public domain (U.S. Government)"
-    access = "CSV в открытом репозитории CBO на GitHub (cbo.gov отвечает 403 автоматическим клиентам)"
+    access = "CSV в открытом репозитории CBO на GitHub"
 
     def list_releases(self) -> list[Release]:
         response = http_get(CATALOG)
         response.raise_for_status()
-        start = archive_start(2)
         releases = []
         for vintage, path in quarterly_files(response.json()):
             year, month = int(vintage[:4]), int(vintage[5:7])
             published = date(year, month, 1)  # the repository gives only the month of the report
-            if published < date(start.year, start.month, 1):
-                continue
             releases.append(
                 Release(
                     release_id=f"{self.source_id}_{year}_{month:02d}",

@@ -176,6 +176,13 @@ def ingest_source(con: duckdb.DuckDBPyConnection, source_id: str, offline: bool 
     con.execute(
         "INSERT INTO ingestion_log (source_id, started_at, finished_at, status, releases, rows_added, error) "
         "VALUES (?, ?, now(), ?, ?, ?, ?)",
-        [source_id, started, "error" if error else "ok", releases_added, rows_added, error],
+        [
+            source_id,
+            started,
+            "error" if error else ("offline" if offline else "ok"),
+            releases_added,
+            rows_added,
+            error,
+        ],
     )
     return Result(source_id, releases_added, rows_added, error)

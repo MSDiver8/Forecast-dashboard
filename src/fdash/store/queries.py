@@ -409,6 +409,19 @@ def sources_registry(con, catalog: Catalog) -> list[dict]:
         GROUP BY ALL
         """
     ).fetchall()
+    checks = {
+        source_id: (checked, status, error, finished)
+        for source_id, checked, status, error, finished in con.execute(
+            """
+            SELECT source_id,
+                   max(finished_at) FILTER (WHERE status = 'ok'),
+                   arg_max(status, finished_at) FILTER (WHERE status <> 'offline'),
+                   arg_max(error, finished_at) FILTER (WHERE status <> 'offline'),
+                   max(finished_at) FILTER (WHERE status <> 'offline')
+            FROM ingestion_log GROUP BY source_id
+            """
+        ).fetchall()
+    }
     titles = {}
     for f in catalog.featured:
         shown = {f.indicator} | (
@@ -430,6 +443,14 @@ def sources_registry(con, catalog: Catalog) -> list[dict]:
                 "releases": count,
                 "first_vintage": first,
                 "last_vintage": last,
+                # last time the source itself was asked; an error of the latest check, if any
+                "checked_at": checks.get(source_id, (None,) * 4)[0],
+                "check_error": checks[source_id][2]
+                if checks.get(source_id, (None, None))[1] == "error"
+                else None,
+                "check_error_at": checks[source_id][3]
+                if checks.get(source_id, (None, None))[1] == "error"
+                else None,
                 "indicators": sorted(set(titles[source_id])),
             }
         )

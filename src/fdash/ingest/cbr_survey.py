@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -114,7 +114,7 @@ class CbrSurvey(Connector):
         latest = self._download_latest()
         tables = _workbook_tables(str(latest), latest.stat().st_mtime)
         surveys = sorted(next(iter(tables.values())).keys())
-        since = date.today() - timedelta(days=365 * 5 + 31)
+        since = date(2000, 1, 1)  # the file holds the whole history (from May 2021)
         return [
             Release(
                 release_id=f"cbr_survey_{s:%Y_%m}",

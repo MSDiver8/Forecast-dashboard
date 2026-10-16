@@ -1,5 +1,5 @@
 export type Frequency = "A" | "Q" | "M";
-export type AppView = "overview" | "indicator" | "sources" | "about";
+export type AppView = "overview" | "indicator" | "sources";
 
 export interface Featured {
   id: string;
@@ -136,6 +136,8 @@ export interface EvalSource {
   name: string;
   organization: string;
   color: string;
+  description: string | null;
+  caveat: string | null;
   releases: number;
   first_vintage: string;
   last_vintage: string;
@@ -164,6 +166,8 @@ export interface EvalRow {
 export interface EvalMetric {
   kind: "source" | "model";
   key: string;
+  partial: boolean;
+  missing: string[];
   n: number;
   mae: number;
   rmse: number;
@@ -219,13 +223,15 @@ export interface Evaluation {
   context: { label: string; frequency: Frequency; points: { period: string; date: string; value: number }[] } | null;
   rows: EvalRow[];
   metrics: {
-    comparable: boolean;
-    min_periods: number;
-    mape_min_actual: number;
+    start: string | null;
+    end: string | null;
+    available: string[];
     periods: string[];
     contiguous: boolean;
+    mape_min_actual: number;
     rows: EvalMetric[];
-    insufficient: { kind: "source" | "model"; key: string; n: number }[];
+    partial: { kind: "source" | "model"; key: string; n: number; total: number; missing: string[]; included: boolean }[];
+    empty: { kind: "source" | "model"; key: string }[];
   };
   evolution: EvalEvolution | null;
 }
@@ -240,6 +246,9 @@ export interface EvaluationRequest {
   model_frequency: Frequency | null;
   period: string | null;
   evolution: boolean;
+  metrics_from: string | null;
+  metrics_to: string | null;
+  metrics_include: string[];
 }
 
 export interface RegistrySource extends SourceMeta {
@@ -249,5 +258,8 @@ export interface RegistrySource extends SourceMeta {
   releases: number;
   first_vintage: string | null;
   last_vintage: string | null;
+  checked_at: string | null;
+  check_error: string | null;
+  check_error_at: string | null;
   indicators: string[];
 }

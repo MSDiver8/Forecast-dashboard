@@ -46,17 +46,17 @@ def test_only_selected_agencies_enter_rows(con, catalog):
     )
     assert {s["source_id"]: s["selected"] for s in result["sources"]} == {"fc": True, "old": False}
     assert [r["period"] for r in result["rows"]] == ["2024", "2025"]  # 2023 had only the deselected source
-    assert result["metrics"]["insufficient"] == [{"kind": "source", "key": "fc", "n": 2}]
+    assert result["metrics"]["periods"] == ["2024", "2025"]
+    assert [(m["key"], m["partial"]) for m in result["metrics"]["rows"]] == [("fc", False)]
 
 
-def test_models_at_the_window_end_and_metrics(con, catalog, monkeypatch):
+def test_models_at_the_window_end_and_metrics(con, catalog):
     history = {
         str(y): v for y, v in zip(range(2016, 2023), [5.4, 2.5, 4.3, 3.0, 4.9, 8.4, 11.9], strict=True)
     }
     add_actuals(
         con, "act_2", date(2026, 3, 1), "ind", "A", {**history, "2023": 7.4, "2024": 9.5, "2025": 5.6}
     )
-    monkeypatch.setattr(accuracy, "MIN_PERIODS", 2)
     result = accuracy.evaluation(
         con,
         catalog,
@@ -88,12 +88,45 @@ def test_models_at_the_window_end_and_metrics(con, catalog, monkeypatch):
     assert next(m for m in result["models"] if m["code"] == "rws")["unavailable"] == {"reason": "seasonal"}
 
 
-def test_mape_is_left_out_near_zero(con, catalog, monkeypatch):
+def test_mape_is_left_out_near_zero(con, catalog):
     add_actuals(con, "act_2", date(2026, 3, 1), "ind", "A", {"2023": 0.4, "2024": 9.5, "2025": 5.6})
-    monkeypatch.setattr(accuracy, "MIN_PERIODS", 1)
-    result = accuracy.evaluation(con, catalog, catalog.featured[0], "A", 2, today=TODAY)
+    result = accuracy.evaluation(
+        con, catalog, catalog.featured[0], "A", 2, today=TODAY, metrics_from="2023", metrics_to="2023"
+    )
     old = next(m for m in result["metrics"]["rows"] if m["key"] == "old")
     assert old["mape"] is None and old["mae"] == pytest.approx(2.6)
+
+
+def test_partial_series_stay_out_unless_included(con, catalog):
+    # 2023 has only the "old" agency, 2024 and 2025 only "fc": nobody covers 2023–2025 in full
+    result = accuracy.evaluation(con, catalog, catalog.featured[0], "A", 2, today=TODAY, metrics_from="2023")
+    metrics = result["metrics"]
+    assert (metrics["start"], metrics["end"], metrics["periods"]) == (
+        "2023",
+        "2025",
+        ["2023", "2024", "2025"],
+    )
+    assert metrics["rows"] == []
+    partial = {p["key"]: (p["n"], p["total"], p["missing"]) for p in metrics["partial"]}
+    assert partial == {"fc": (2, 3, ["2023"]), "old": (1, 3, ["2024", "2025"])}
+    included = accuracy.evaluation(
+        con,
+        catalog,
+        catalog.featured[0],
+        "A",
+        2,
+        today=TODAY,
+        metrics_from="2023",
+        metrics_include=("source:fc",),
+    )["metrics"]
+    fc = next(m for m in included["rows"] if m["key"] == "fc")
+    assert fc["partial"] and fc["n"] == 2 and fc["missing"] == ["2023"]
+    assert next(p for p in included["partial"] if p["key"] == "fc")["included"]
+    # by default the range starts where two agencies meet; here they never do, so at the first actual
+    assert (
+        accuracy.evaluation(con, catalog, catalog.featured[0], "A", 2, today=TODAY)["metrics"]["start"]
+        == "2023"
+    )
 
 
 def test_monthly_model_averaged_to_the_year(con, catalog):

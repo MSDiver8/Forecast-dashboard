@@ -22,7 +22,6 @@ export function PortalHeader({ activeView, online, hasIndicator, onNavigate }: P
     { view: "overview", label: t("tab.overview") },
     ...(hasIndicator ? [{ view: "indicator" as AppView, label: t("tab.compare") }] : []),
     { view: "sources", label: t("tab.sources") },
-    { view: "about", label: t("tab.about") },
   ];
   return (
     <>

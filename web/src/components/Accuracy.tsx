@@ -3,8 +3,9 @@ import { api } from "../api";
 import { MODEL_COLORS } from "../colors";
 import { formatPeriod, formatShortDate, formatValue } from "../format";
 import { t } from "../i18n";
-import type { EvalMetric, EvalModel, Evaluation, EvaluationRequest, FactMode, Frequency } from "../types";
-import { AccuracyChart, type AccuracyChartHandle, asOf, type ChartSeries, monthLabel, signed } from "./AccuracyChart";
+import type { EvalMetric, EvalModel, EvalRow, Evaluation, EvaluationRequest, FactMode, Frequency } from "../types";
+import { SourceTip } from "./SourceTip";
+import { AccuracyChart, type AccuracyChartHandle, asOf, type ChartSeries, monthLabel, roundTo, signed } from "./AccuracyChart";
 
 const LEVEL_DIGITS = 2;
 const ERROR_DIGITS = 1;
@@ -34,6 +35,10 @@ function InfoTip({ text }: { text: string }) {
   return <span className="info-tip" tabIndex={0} data-tip={text} aria-label={text}>i</span>;
 }
 
+function WarnTip({ text }: { text: string }) {
+  return <span className="info-tip info-tip--warn" tabIndex={0} data-tip={text} aria-label={text}>!</span>;
+}
+
 function reasonText(model: EvalModel): string {
   const u = model.unavailable;
   if (!u) return "";
@@ -52,6 +57,9 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
   const [modelFrequency, setModelFrequency] = useState<Frequency | null>(null);
   const [view, setView] = useState<"periods" | "evolution">("periods");
   const [showAll, setShowAll] = useState(false);
+  const [metricsFrom, setMetricsFrom] = useState<string | null>(null);
+  const [metricsTo, setMetricsTo] = useState<string | null>(null);
+  const [metricsInclude, setMetricsInclude] = useState<string[]>([]);
   const [data, setData] = useState<Evaluation | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -61,7 +69,8 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
     featured: id, frequency, window: windowIndex, fact: factMode, sources,
     models: Object.entries(models).map(([code, params]) => ({ code, params })),
     model_frequency: modelFrequency, period: view === "evolution" ? period : null, evolution: view === "evolution",
-  }), [id, frequency, windowIndex, factMode, sources, models, modelFrequency, period, view]);
+    metrics_from: metricsFrom, metrics_to: metricsTo, metrics_include: metricsInclude,
+  }), [id, frequency, windowIndex, factMode, sources, models, modelFrequency, period, view, metricsFrom, metricsTo, metricsInclude]);
 
   useEffect(() => {
     let active = true;
@@ -124,29 +133,37 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
     return t("acc.estSame", { freq });
   };
 
-  // Table: errors are tinted by size with one colour; the darker, the larger the error.
+  // Table: in each period the forecast closest to the actual is marked; errors are compared as shown.
   const rows = showAll ? data.rows : data.rows.slice(-RECENT_ROWS);
-  const errorsShown = rows.flatMap((r) => chartSeries.map((s) => (s.model ? r.models[s.key] : r.picks[s.key])?.error))
-    .filter((e): e is number => e != null);
-  const maxError = Math.max(1e-9, ...errorsShown.map(Math.abs));
-  const tint = (e: number | null | undefined) => (e == null ? undefined : { background: `rgba(204, 122, 0, ${(0.04 + 0.26 * Math.abs(e) / maxError).toFixed(3)})` });
+  const closest = (r: EvalRow) => {
+    const errors = chartSeries.map((s) => (s.model ? r.models[s.key] : r.picks[s.key])?.error)
+      .filter((e): e is number => e != null).map((e) => Math.abs(roundTo(e, ERROR_DIGITS)));
+    return errors.length > 1 ? Math.min(...errors) : null;
+  };
 
-  // Metrics: the common periods named as a range, a short list, or a count with bounds.
+  // Metrics over the chosen range: series covering every period are compared on the same periods;
+  // series covering only part of it are optional and marked.
   const { metrics } = data;
-  const common = metrics.periods;
-  const commonCount = `${common.length} ${plural(common.length, words)}`;
+  const used = metrics.periods;
+  const usedCount = `${used.length} ${plural(used.length, words)}`;
   let range = "";
-  if (common.length) {
-    const [from, to] = [shortPeriod(common[0]), shortPeriod(common[common.length - 1])];
+  if (used.length) {
+    const [from, to] = [shortPeriod(used[0]), shortPeriod(used[used.length - 1])];
     if (metrics.contiguous) range = frequency === "A" ? t("acc.rangeA", { from, to }) : t("acc.range", { from, to });
-    else if (common.length <= 4) range = frequency === "A" ? t("acc.listA", { list: common.map(shortPeriod).join(", ") }) : t("acc.list", { list: common.map(shortPeriod).join(", ") });
-    else range = t("acc.spread", { count: commonCount, from, to });
+    else if (used.length <= 4) range = frequency === "A" ? t("acc.listA", { list: used.map(shortPeriod).join(", ") }) : t("acc.list", { list: used.map(shortPeriod).join(", ") });
+    else range = t("acc.spread", { count: usedCount, from, to });
   }
-  const metricRows = [...metrics.rows].sort((a, b) => a.mae - b.mae);
+  const byMae = (a: EvalMetric, b: EvalMetric) => a.mae - b.mae;
+  const fullRows = metrics.rows.filter((m) => !m.partial).sort(byMae);
+  const partialRows = metrics.rows.filter((m) => m.partial).sort(byMae);
   const best = (pick: (m: EvalMetric) => number | null) => {
-    const values = metricRows.map(pick).filter((v): v is number => v != null);
+    const values = fullRows.map(pick).filter((v): v is number => v != null);
     return values.length ? Math.min(...values) : null;
   };
+  const partialWarning = (kind: string, key: string, n: number, total: number, missing: string[]) => t("acc.partialWarn", {
+    name: seriesName(kind, key), n, total, missing: missing.map(shortPeriod).join(", "),
+  });
+  const toggleInclude = (key: string) => setMetricsInclude((x) => (x.includes(key) ? x.filter((k) => k !== key) : [...x, key]));
   const bestMae = best((m) => m.mae);
   const bestRmse = best((m) => m.rmse);
   const bestMape = best((m) => m.mape);
@@ -213,7 +230,7 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
               <label className="check-row" key={s.source_id}>
                 <input type="checkbox" checked={s.selected} onChange={() => toggleSource(s.source_id)} />
                 <i style={{ background: s.color, opacity: s.selected ? 1 : 0.3 }} />
-                <span><b>{s.short}</b><small>{s.name} · {t("acc.releasesCount", { n: s.releases, word: plural(s.releases, t("acc.releaseWords")) })}</small></span>
+                <span><b>{s.short}<SourceTip summary={s.description} caveat={s.caveat} /></b><small>{s.name} · {t("acc.releasesCount", { n: s.releases, word: plural(s.releases, t("acc.releaseWords")) })}</small></span>
               </label>
             ))}
           </div>
@@ -284,6 +301,7 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
           <div>
             <h2>{t(`acc.tableTitle${frequency}`)}</h2>
             <p>{t("acc.tableText", { unit: data.error_unit })}</p>
+            <p className="acc-legend"><span className="acc-legend__closest" />{t("acc.closestLegend")}</p>
           </div>
         </div>
         <div className="acc-table-wrap">
@@ -303,6 +321,7 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
             <tbody>
               {rows.map((r) => {
                 const isPending = r.fact == null;
+                const nearest = closest(r);
                 const cls = isPending ? "is-pending" : r.period === selected?.period ? "is-selected" : "is-clickable";
                 return (
                   <tr key={r.period} className={cls} onClick={isPending ? undefined : () => setPeriod(r.period)}>
@@ -315,8 +334,9 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
                     {chartSeries.map((s) => {
                       const cell = s.model ? r.models[s.key] : r.picks[s.key];
                       if (!cell) return <td key={s.key}><span className="na">—</span></td>;
+                      const near = nearest != null && cell.error != null && Math.abs(roundTo(cell.error, ERROR_DIGITS)) === nearest;
                       return (
-                        <td key={s.key} style={tint(cell.error)}>
+                        <td key={s.key} className={near ? "is-closest" : undefined}>
                           <span className="v">{formatValue(cell.value, LEVEL_DIGITS)}</span>
                           {cell.error != null && <span className="e">{signed(cell.error, ERROR_DIGITS)}</span>}
                           <small>{s.model ? t("acc.tipModel", { date: formatShortDate(asOf(r.window_end)) }) : issuedLabel(r.picks[s.key])}</small>
@@ -336,15 +356,28 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
         )}
       </section>
 
-      {(metricRows.length > 0 || metrics.insufficient.length > 0) && (
+      {metrics.available.length > 0 && chartSeries.length > 0 && (
         <section className="acc-block">
           <div className="acc-block__head">
             <div>
-              <h2>{metrics.comparable ? t("acc.metricsTitle", { range }) : t("acc.metricsTitleOwn")}</h2>
-              <p>{metrics.comparable ? t("acc.metricsText", { min: metrics.min_periods }) : t("acc.metricsTextOwn", { min: metrics.min_periods })}</p>
+              <h2>{t("acc.metricsTitle")}</h2>
+              <p>{t("acc.metricsText")}</p>
+            </div>
+            <div className="acc-range">
+              <label>{t("acc.rangeFrom")}
+                <select value={metrics.start ?? ""} onChange={(e) => setMetricsFrom(e.target.value)}>
+                  {metrics.available.map((p) => <option key={p} value={p}>{shortPeriod(p)}</option>)}
+                </select>
+              </label>
+              <label>{t("acc.rangeTo")}
+                <select value={metrics.end ?? ""} onChange={(e) => setMetricsTo(e.target.value)}>
+                  {metrics.available.map((p) => <option key={p} value={p}>{shortPeriod(p)}</option>)}
+                </select>
+              </label>
             </div>
           </div>
-          {metricRows.length > 0 && (
+          <p className="acc-periods">{t("acc.periodsUsed", { count: usedCount, range })}</p>
+          {fullRows.length + partialRows.length > 0 && (
             <div className="acc-table-wrap">
               <table className="acc-table acc-metrics">
                 <thead>
@@ -359,21 +392,23 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
                   </tr>
                 </thead>
                 <tbody>
-                  {metricRows.map((m) => {
+                  {[...fullRows, ...partialRows].map((m) => {
                     const color = m.kind === "source" ? sourceOf.get(m.key)?.color : MODEL_COLORS[m.key];
+                    const plain = (value: number | null, digits = METRIC_DIGITS) => (value == null ? <span className="na">—</span> : formatValue(value, digits));
                     return (
-                      <tr key={`${m.kind}:${m.key}`}>
+                      <tr key={`${m.kind}:${m.key}`} className={m.partial ? "is-partial" : undefined}>
                         <td>
                           <i className={m.kind === "model" ? "dash" : ""} style={m.kind === "model" ? { ["--c" as string]: color } : { background: color }} />
                           <b>{seriesName(m.kind, m.key)}</b>
                           {m.kind === "model" && <span className="tag">{t("acc.modelTag")}</span>}
+                          {m.partial && <WarnTip text={partialWarning(m.kind, m.key, m.n, used.length, m.missing)} />}
                         </td>
-                        <td className="num">{m.n}</td>
-                        <td className="num">{strong(m.mae, bestMae)}</td>
-                        <td className="num">{strong(m.rmse, bestRmse)}</td>
-                        <td className="num">{strong(m.mape, bestMape, 1)}</td>
+                        <td className="num">{m.partial ? t("acc.partialCount", { n: m.n, total: used.length }) : m.n}</td>
+                        <td className="num">{m.partial ? plain(m.mae) : strong(m.mae, bestMae)}</td>
+                        <td className="num">{m.partial ? plain(m.rmse) : strong(m.rmse, bestRmse)}</td>
+                        <td className="num">{m.partial ? plain(m.mape, 1) : strong(m.mape, bestMape, 1)}</td>
                         <td className="num">{signed(m.me, METRIC_DIGITS)}</td>
-                        <td className="num">{strong(m.ratio_rw, bestRatio)}</td>
+                        <td className="num">{m.partial ? plain(m.ratio_rw) : strong(m.ratio_rw, bestRatio)}</td>
                       </tr>
                     );
                   })}
@@ -381,13 +416,22 @@ export function Accuracy({ id, frequency, name }: { id: string; frequency: Frequ
               </table>
             </div>
           )}
-          {metrics.insufficient.length > 0 && (
-            <p className="acc-footnote">
-              {t("acc.insufficient", {
-                min: metrics.min_periods,
-                list: metrics.insufficient.map((x) => `${seriesName(x.kind, x.key)} — ${x.n}`).join(", "),
-              })}
-            </p>
+          {metrics.partial.length > 0 && (
+            <div className="acc-partial">
+              <p>{t("acc.partialTitle")}</p>
+              {metrics.partial.map((x) => (
+                <label key={`${x.kind}:${x.key}`} className="acc-partial__row">
+                  <input type="checkbox" checked={x.included} onChange={() => toggleInclude(`${x.kind}:${x.key}`)} />
+                  <b>{seriesName(x.kind, x.key)}</b>
+                  <span>{t("acc.partialCount", { n: x.n, total: x.total })}</span>
+                  <WarnTip text={partialWarning(x.kind, x.key, x.n, x.total, x.missing)} />
+                  <small>{t("acc.include")}</small>
+                </label>
+              ))}
+            </div>
+          )}
+          {metrics.empty.length > 0 && (
+            <p className="acc-footnote">{t("acc.emptySeries", { list: metrics.empty.map((x) => seriesName(x.kind, x.key)).join(", ") })}</p>
           )}
         </section>
       )}

@@ -20,7 +20,6 @@ from fdash.ingest.base import (
     Parsed,
     Release,
     SourceStructureError,
-    archive_start,
     client,
     copy_into,
     projection_kind,
@@ -30,6 +29,8 @@ from fdash.ingest.registry import register
 
 SITE = "https://economics.td.com"
 PAGE = f"{SITE}/us-quarterly-economic-forecast"
+# Earlier releases publish the forecast table as an image, which is not read.
+FIRST_TEXT_TABLE = date(2025, 12, 1)
 BASE = f"{SITE}/domains/economics.td.com/documents/reports/qef"
 FIRST_WITH_TEXT = (2025, 12)
 MONTHS = {3: ("mar", "March"), 6: ("jun", "June"), 9: ("sep", "September"), 12: ("dec", "December")}
@@ -104,7 +105,7 @@ class TdEconomics(Connector):
     organization = "TD Economics"
     url = PAGE
     license = "TD Economics, публичная публикация; используется со ссылкой на источник"
-    access = "PDF по ссылке со страницы прогноза (исключение из правила о PDF, решение заказчика 13.10.2026)"
+    access = "PDF по ссылке со страницы прогноза"
 
     def __init__(self) -> None:
         self._downloaded: dict[str, Path] = {}
@@ -120,7 +121,7 @@ class TdEconomics(Connector):
 
     def list_releases(self) -> list[Release]:
         saved = saved_releases(self.source_id)
-        start, today = archive_start(2), date.today()
+        start, today = FIRST_TEXT_TABLE, date.today()
         found: dict[tuple[int, int], str] = {}
         with client() as http:
             page = http.get(PAGE)

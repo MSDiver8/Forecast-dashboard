@@ -120,6 +120,9 @@ class EvaluationRequest(BaseModel):
     model_frequency: Literal["A", "Q", "M"] | None = None
     period: str | None = None
     evolution: bool = False  # the path of forecasts for `period` by publication date
+    metrics_from: str | None = None  # range of target periods for the metrics
+    metrics_to: str | None = None
+    metrics_include: list[str] = Field(default_factory=list)  # partial series to show anyway
 
 
 @app.post("/api/evaluation")
@@ -138,6 +141,9 @@ def evaluation(req: EvaluationRequest) -> dict:
         req.model_frequency,
         req.period,
         evolution=req.evolution,
+        metrics_from=req.metrics_from,
+        metrics_to=req.metrics_to,
+        metrics_include=tuple(req.metrics_include),
     )
 
 

@@ -49,3 +49,22 @@ def test_news_block_draws_newest_release_from_last_known_value(con, catalog):
     assert line["release_title"] == "fc_2025"
     # the path starts at the 2024 estimate, the value known to the source on the release date
     assert [p["period"] for p in line["points"]] == ["2024", "2025", "2026"]
+
+
+def test_sources_registry_reports_the_last_check(con, catalog):
+    from datetime import datetime
+
+    log = [
+        (datetime(2026, 10, 1, 9), "ok", None),
+        (datetime(2026, 10, 5, 9), "offline", None),  # a rebuild from data/raw does not ask the source
+        (datetime(2026, 10, 9, 9), "error", "HTTPStatusError: 403"),
+    ]
+    for finished, status, error in log:
+        con.execute(
+            "INSERT INTO ingestion_log (source_id, started_at, finished_at, status, releases, rows_added, "
+            "error) VALUES ('fc', ?, ?, ?, 0, 0, ?)",
+            [finished, finished, status, error],
+        )
+    fc = next(s for s in queries.sources_registry(con, catalog) if s["source_id"] == "fc")
+    assert fc["checked_at"] == datetime(2026, 10, 1, 9)
+    assert fc["check_error"] == "HTTPStatusError: 403" and fc["check_error_at"] == datetime(2026, 10, 9, 9)

@@ -6,7 +6,7 @@ import csv
 import io
 import re
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 from fdash.ingest.base import Connector, Observation, Parsed, Release, SourceStructureError, http_get
@@ -88,14 +88,13 @@ class EcbMpd(Connector):
         exercises = sorted({r["PD_SEAS_EX"] for r in parse_csv(keys) if EXERCISE.match(r["PD_SEAS_EX"])})
         index = http_get(INDEX)
         known = publication_dates(index.text) if index.status_code == 200 else {}
-        since = date.today() - timedelta(days=365 * 5 + 92)
-        releases = []
+        releases = []  # every exercise present in the dataset
         for code in exercises:
             year, month = exercise_month(code)
             published = known.get((year, month))
             approx = published is None
             published = published or date(year, month, 15)
-            if published < since or published > date.today():
+            if published > date.today():
                 continue
             releases.append(
                 Release(

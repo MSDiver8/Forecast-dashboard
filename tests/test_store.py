@@ -99,3 +99,13 @@ def test_releases_share_one_raw_file(con, monkeypatch):
     saved = runner.local_releases("hist")
     assert [r.shared for r, _ in saved] == ["2025-02-01/f.zip", "2025-02-01/f.zip"]
     assert runner.ingest_source(con, "hist").releases_added == 0
+
+
+def test_offline_run_is_logged_apart_from_a_check(con, tmp_path, monkeypatch):
+    from fdash import settings
+    from fdash.ingest import runner
+
+    monkeypatch.setattr(settings, "RAW_DIR", tmp_path / "raw")
+    runner.ingest_source(con, "cbr_stats", offline=True)
+    status = con.execute("SELECT status FROM ingestion_log WHERE source_id = 'cbr_stats'").fetchone()[0]
+    assert status == "offline"

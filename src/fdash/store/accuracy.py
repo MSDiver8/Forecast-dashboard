@@ -27,7 +27,6 @@ WINDOWS = {
     "M": [(-3, -2), (-2, -1), (-1, 0), (0, 1)],
 }
 DEFAULT_WINDOW = {"A": 1, "Q": 2, "M": 2}  # the window right before the target period
-MIN_PERIODS = 3  # a series with fewer checked periods is left out of the metrics
 MAPE_MIN_ACTUAL = 1.0  # MAPE only when every actual in the sample is at least this, in the indicator's unit
 SHORT_UNITS = {"долл. США за баррель": "долл./барр."}
 APPROX_MARK = " (дата ≈)"
@@ -164,6 +163,9 @@ def evaluation(
     period: str | None = None,
     today: date | None = None,
     evolution: bool = False,
+    metrics_from: str | None = None,
+    metrics_to: str | None = None,
+    metrics_include: tuple[str, ...] = (),
 ) -> dict:
     """Everything the accuracy tab shows for one indicator, frequency and set of choices.
 
@@ -207,6 +209,8 @@ def evaluation(
         source_list.append(
             {
                 **{k: source[k] for k in ("source_id", "short", "name", "organization", "color")},
+                "description": source.get("description"),
+                "caveat": source.get("caveat"),
                 "releases": len(vintages),
                 "first_vintage": vintages[0],
                 "last_vintage": vintages[-1],
@@ -313,7 +317,14 @@ def evaluation(
         "periods": period_list,
         "context": _context(con, catalog, item),
         "rows": rows,
-        "metrics": _metrics(rows, list(forecasts), [code for code, _ in choices]),
+        "metrics": _metrics(
+            rows,
+            list(forecasts),
+            [code for code, _ in choices],
+            metrics_from,
+            metrics_to,
+            tuple(metrics_include),
+        ),
         "evolution": _evolution(
             selected_period, period_list, forecasts, estimator, choices, windows[window], today
         )
@@ -368,12 +379,22 @@ def _evolution(target, period_list, forecasts, estimator, choices, offsets, toda
     }
 
 
-def _metrics(rows: list[dict], source_ids: list[str], model_codes: list[str]) -> dict:
-    """Error statistics over the periods every compared series covers.
+def _metrics(
+    rows: list[dict],
+    source_ids: list[str],
+    model_codes: list[str],
+    start: str | None = None,
+    end: str | None = None,
+    include: tuple[str, ...] = (),
+) -> dict:
+    """Error statistics over a range of target periods.
 
-    Series with fewer than MIN_PERIODS checked periods are left out. When the rest share fewer
-    periods than that, each series is summarised over its own periods and the figures are not
-    comparable between series.
+    Series with a value in every period of the range are compared on the same periods. A series
+    covering only part of the range is left out unless it is asked for in `include`
+    ("source:<id>" or "model:<code>"); then it is summarised over its own periods and marked,
+    because its averages are not comparable with the others. By default the range starts at the
+    first period that two of the chosen agencies cover (one, if only one is chosen) and ends at
+    the last period with an actual.
     """
     keys = [("source", s) for s in source_ids] + [("model", m) for m in model_codes]
 
@@ -382,32 +403,65 @@ def _metrics(rows: list[dict], source_ids: list[str], model_codes: list[str]) ->
         return None if cell is None else cell["error"]
 
     checked = [r for r in rows if r["fact"] is not None]
-    counts = {k: sum(1 for r in checked if error(r, *k) is not None) for k in keys}
-    compared = [k for k in keys if counts[k] >= MIN_PERIODS]
-    insufficient = [{"kind": k[0], "key": k[1], "n": counts[k]} for k in keys if k not in compared]
-    common = [
-        r for r in checked if r["rw_error"] is not None and all(error(r, *k) is not None for k in compared)
-    ]
-    comparable = bool(compared) and len(common) >= MIN_PERIODS
+    available = [r["period"] for r in checked]
+    if not checked:
+        return {
+            "start": None,
+            "end": None,
+            "available": [],
+            "periods": [],
+            "contiguous": False,
+            "mape_min_actual": MAPE_MIN_ACTUAL,
+            "rows": [],
+            "partial": [],
+            "empty": [],
+        }
+    if start not in available:
+        need = min(2, len(source_ids)) or 1
+        covered = [
+            r["period"] for r in checked if sum(error(r, "source", s) is not None for s in source_ids) >= need
+        ]
+        start = covered[0] if covered else available[0]
+    end = end if end in available else available[-1]
+    start, end = min(start, end), max(start, end)
+    in_range = [r for r in checked if start <= r["period"] <= end]
+    coverage = {k: [r for r in in_range if error(r, *k) is not None] for k in keys}
+    full = [k for k in keys if len(coverage[k]) == len(in_range)]
+    partial = [k for k in keys if 0 < len(coverage[k]) < len(in_range)]
+    wanted = {tuple(x.split(":", 1)) for x in include}
     stats = []
-    for kind, key in compared:
-        own = common if comparable else [r for r in checked if error(r, kind, key) is not None]
+    for kind, key in full + [k for k in partial if k in wanted]:
+        own = coverage[(kind, key)]
         stats.append(
             {
                 "kind": kind,
                 "key": key,
+                "partial": (kind, key) in partial,
+                "missing": [r["period"] for r in in_range if error(r, kind, key) is None],
                 **_stats([(error(r, kind, key), r["fact"], r["rw_error"]) for r in own]),
             }
         )
-    shared = [r["period"] for r in common] if comparable else []
+    shown = [r["period"] for r in in_range]
     return {
-        "comparable": comparable,
-        "min_periods": MIN_PERIODS,
+        "start": start,
+        "end": end,
+        "available": available,
+        "periods": shown,
+        "contiguous": all(periods.shift(a, 1) == b for a, b in pairwise(shown)),
         "mape_min_actual": MAPE_MIN_ACTUAL,
-        "periods": shared,
-        "contiguous": comparable and all(periods.shift(a, 1) == b for a, b in pairwise(shared)),
         "rows": stats,
-        "insufficient": insufficient,
+        "partial": [
+            {
+                "kind": k[0],
+                "key": k[1],
+                "n": len(coverage[k]),
+                "total": len(in_range),
+                "missing": [r["period"] for r in in_range if error(r, *k) is None],
+                "included": k in wanted,
+            }
+            for k in partial
+        ],
+        "empty": [{"kind": k[0], "key": k[1]} for k in keys if not coverage[k]],
     }
 
 

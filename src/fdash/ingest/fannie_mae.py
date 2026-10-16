@@ -19,7 +19,6 @@ from fdash.ingest.base import (
     Parsed,
     Release,
     SourceStructureError,
-    archive_start,
     copy_into,
     http_get,
     projection_kind,
@@ -27,12 +26,20 @@ from fdash.ingest.base import (
 )
 from fdash.ingest.registry import register
 
-URL = "https://www.fanniemae.com/media/document/pdf/economic-forecast-{month:02d}{year}"
-ARCHIVE = "https://www.fanniemae.com/data-and-insights/forecast/forecast-monthly-archive"
+BASE = "https://www.fanniemae.com"
+ARCHIVE = f"{BASE}/data-and-insights/forecast/forecast-monthly-archive"
+# The archive page links every Economic Forecast from September 2020: economic-forecast-<MM><YYYY>
+# from July 2022, earlier economic-forecast-<MM><DD><YY> (091520 = 15 September 2020), once with "pdf".
+ARCHIVE_LINK = re.compile(r'href="(/media/document/pdf/economic-forecast-(\d{6})(?:pdf)?)"')
 HEADER = re.compile(r"^(\d{2})\.([1-4])$")
 DATE = re.compile(
     r"(January|February|March|April|May|June|July|August|September|October|November|December)"
     r" (\d{1,2}), (\d{4})"
+)
+# "Economic Forecast: January 2021" on top of page 1 names the release month
+TITLE = re.compile(
+    r"Economic Forecast:\s+(January|February|March|April|May|June|July|August|September|October|November"
+    r"|December)\s+(\d{4})"
 )
 WHITE_OR_BLACK = (None, 0, 1, (0,), (1,), (0, 0, 0), (1, 1, 1), [0], [1], [0, 0, 0], [1, 1, 1])
 
@@ -71,7 +78,22 @@ def read_pdf(path: Path) -> tuple[date, list[tuple[str, float, bool]]]:
         found = DATE.search(text)
         if not found:
             raise SourceStructureError(f"{path.name}: publication date not found")
-    return datetime.strptime(" ".join(found.groups()), "%B %d %Y").date(), points
+    published = datetime.strptime(" ".join(found.groups()), "%B %d %Y").date()
+    title = TITLE.search(text)
+    if title and title.group(1) == found.group(1) and int(title.group(2)) != published.year:
+        # the January 2021 release is dated "January 11, 2020": the year of the title is taken
+        published = published.replace(year=int(title.group(2)))
+    return published, points
+
+
+def archive_links(html: str) -> dict[tuple[int, int], str]:
+    """(year, month) -> PDF address of each Economic Forecast linked from the archive page."""
+    found: dict[tuple[int, int], str] = {}
+    for href, digits in ARCHIVE_LINK.findall(html):
+        # MMYYYY, or MMDDYY for releases before July 2022; a day of 20 gives the same month either way
+        year = int(digits[2:]) if digits[2:4] == "20" else 2000 + int(digits[4:])
+        found.setdefault((year, int(digits[:2])), BASE + href)
+    return found
 
 
 class FannieMae(Connector):
@@ -80,7 +102,7 @@ class FannieMae(Connector):
     organization = "Fannie Mae"
     url = ARCHIVE
     license = "Fannie Mae, публичная публикация; используется со ссылкой на источник"
-    access = "PDF по постоянной ссылке на месяц (исключение из правила о PDF, решение заказчика 13.10.2026)"
+    access = "PDF по постоянной ссылке на месяц"
 
     def __init__(self) -> None:
         self._downloaded: dict[str, Path] = {}
@@ -97,32 +119,31 @@ class FannieMae(Connector):
 
     def list_releases(self) -> list[Release]:
         saved = saved_releases(self.source_id)
-        start, today = archive_start(2), date.today()
+        page = http_get(ARCHIVE)
+        page.raise_for_status()
         releases = []
-        year, month = start.year, start.month
-        while (year, month) <= (today.year, today.month):
+        for (year, month), url in sorted(archive_links(page.text).items()):
             release_id = f"{self.source_id}_{year}_{month:02d}"
             if release_id in saved:
                 releases.append(saved[release_id])
-            else:
-                url = URL.format(month=month, year=year)
-                response = http_get(url)
-                if response.status_code == 200 and response.headers.get("content-type", "").startswith(
-                    "application/pdf"
-                ):
-                    published, _ = read_pdf(self._save_temp(release_id, response.content))
-                    releases.append(
-                        Release(
-                            release_id=release_id,
-                            source_id=self.source_id,
-                            title=f"Economic Forecast {month:02d}.{year}",
-                            vintage_date=published,
-                            url=url,
-                            filename="economic-forecast.pdf",
-                            extra={"month": f"{year}-{month:02d}"},
-                        )
-                    )
-            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+                continue
+            response = http_get(url)
+            content_type = response.headers.get("content-type", "")
+            if response.status_code != 200 or not content_type.startswith("application/pdf"):
+                # e.g. 403: the site blocks some clients; a failed check must not pass for "nothing new"
+                raise SourceStructureError(f"{url}: answer {response.status_code} {content_type}")
+            published, _ = read_pdf(self._save_temp(release_id, response.content))
+            releases.append(
+                Release(
+                    release_id=release_id,
+                    source_id=self.source_id,
+                    title=f"Economic Forecast {month:02d}.{year}",
+                    vintage_date=published,
+                    url=url,
+                    filename="economic-forecast.pdf",
+                    extra={"month": f"{year}-{month:02d}"},
+                )
+            )
         return releases
 
     def fetch(self, release: Release) -> Path:

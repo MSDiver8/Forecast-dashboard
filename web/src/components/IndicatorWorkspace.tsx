@@ -6,6 +6,7 @@ import { t } from "../i18n";
 import { actualPoints, buildLines, categories, defaultSelection, effectiveSelection, staleSources } from "../lines";
 import type { Featured, Frequency, ModelRun, ModelSpec, SeriesResponse } from "../types";
 import { Accuracy } from "./Accuracy";
+import { SourceTip } from "./SourceTip";
 import { type ChartHandle, ForecastChart } from "./ForecastChart";
 import { IndicatorPicker } from "./IndicatorPicker";
 import { PeriodTable } from "./PeriodTable";
@@ -183,8 +184,8 @@ export function IndicatorWorkspace({ id, featured, onSelect, onBack }: Props) {
                   return (
                     <div className="source-choice" key={source.source_id}>
                       <div className="source-choice__head">
-                        <span className="source-choice__name" title={[source.description, source.caveat].filter(Boolean).join(" ")}>
-                          <i style={{ background: source.color }} /><strong>{source.short}</strong><span className="info-dot">i</span>
+                        <span className="source-choice__name">
+                          <i style={{ background: source.color }} /><strong>{source.short}</strong><SourceTip summary={source.description} caveat={source.caveat} />
                         </span>
                         <span className="source-choice__actions">
                           <button type="button" onClick={() => setSource(source.source_id, "latest")}>{t("ws.latestOnly")}</button>

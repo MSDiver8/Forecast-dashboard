@@ -73,6 +73,15 @@ def test_obr_tables_and_kinds(fixtures):
     assert obr_efo.published_date(html) == date(2026, 3, 3)
 
 
+def test_obr_tells_an_html_answer_from_the_tables(fixtures, tmp_path):
+    page = tmp_path / "economy.xlsx"
+    page.write_text(
+        "<!DOCTYPE html><title>No Access - Office for Budget Responsibility</title>", encoding="utf-8"
+    )
+    assert not obr_efo.is_xlsx(page)
+    assert obr_efo.is_xlsx(fixtures / "obr_efo" / "economy-march-2026.xlsx")
+
+
 @pytest.mark.parametrize(
     "month,quarter",
     [("2025-12", "2025-Q4"), ("2025-08", "2025-Q2"), ("2025-01", "2024-Q4"), ("2024-09", "2024-Q3")],
@@ -129,6 +138,49 @@ def test_fannie_mae_table(fixtures):
     parsed = fannie_mae.FannieMae().parse(raw, release("fannie_mae", date(2024, 10, 10)))
     kinds = {o.target_period: o.kind for o in parsed.observations}
     assert kinds["2024-Q2"] == "actual" and kinds["2024-Q3"] == "estimate" and kinds["2024-Q4"] == "forecast"
+
+
+class _Answer:
+    def __init__(self, status: int, content_type: str = "text/html", text: str = "") -> None:
+        self.status_code, self.headers, self.text, self.content = (
+            status,
+            {"content-type": content_type},
+            text,
+            b"",
+        )
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+def test_fannie_mae_date_typo_takes_the_year_of_the_title(fixtures):
+    # "Economic Forecast: January 2021", dated "January 11, 2020" in the text
+    published, points = fannie_mae.read_pdf(fixtures / "fannie_mae" / "economic-forecast-011521.pdf")
+    assert published == date(2021, 1, 11)
+    assert points[0][0] == "2020-Q1" and points[-1][0] == "2022-Q4"
+
+
+def test_fannie_mae_archive_links(fixtures):
+    html = (fixtures / "fannie_mae" / "forecast-monthly-archive-excerpt.html").read_text(encoding="utf-8")
+    links = fannie_mae.archive_links(html)
+    assert sorted(links) == [(2020, 9), (2022, 1), (2022, 7), (2026, 9), (2026, 10)]
+    assert links[(2020, 9)].endswith("/economic-forecast-091520")  # month, day and year
+    assert links[(2022, 1)].endswith("/economic-forecast-011922pdf")
+    assert links[(2026, 10)].endswith("/economic-forecast-102026")  # month and year
+
+
+def test_fannie_mae_reports_a_blocked_check(fixtures, monkeypatch):
+    # a 403 instead of the PDF must not pass for "nothing new"
+    html = (fixtures / "fannie_mae" / "forecast-monthly-archive-excerpt.html").read_text(encoding="utf-8")
+    monkeypatch.setattr(fannie_mae, "saved_releases", lambda source_id: {})
+    monkeypatch.setattr(
+        fannie_mae,
+        "http_get",
+        lambda url, **kwargs: _Answer(200, text=html) if url == fannie_mae.ARCHIVE else _Answer(403),
+    )
+    with pytest.raises(SourceStructureError, match="answer 403"):
+        fannie_mae.FannieMae().list_releases()
 
 
 def test_td_table(fixtures):

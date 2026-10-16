@@ -59,5 +59,10 @@ def test_evaluation_post(client):
     assert body["window"] == 2 and body["fact_mode"] == "first"
     assert [s["source_id"] for s in body["sources"] if s["selected"]] == ["fc"]
     assert next(m for m in body["models"] if m["code"] == "rw")["selected"]
+    ranged = client.post(
+        "/api/evaluation",
+        json={"featured": "x", "window": 2, "metrics_from": "2023", "metrics_include": ["source:fc"]},
+    ).json()["metrics"]
+    assert ranged["start"] == "2023" and any(m["partial"] for m in ranged["rows"])
     assert client.post("/api/evaluation", json={"featured": "x", "window": 9}).status_code == 422
     assert client.post("/api/evaluation", json={"featured": "x", "fact": "other"}).status_code == 422

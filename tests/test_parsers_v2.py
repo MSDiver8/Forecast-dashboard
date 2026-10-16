@@ -49,6 +49,30 @@ def test_cbr_mtf_tables(fixtures, name, first_year, cpi_next, rate_next):
     assert {o.area_id for o in parsed.observations} == {"RU"}
 
 
+def test_cbr_mtf_scenario_table_keeps_the_base_scenario(fixtures):
+    # March 2019: base and "high oil prices" scenarios side by side, no key rate row yet
+    parsed = cbr_mtf.CbrMtf().parse(
+        fixtures / "cbr_mtf" / "forecast_190322.pdf", release("cbr_mtf", date(2019, 3, 22))
+    )
+    by = {(o.indicator_id, o.target_period): o for o in parsed.observations}
+    assert parsed.data_cutoff == "2018"
+    assert sorted(p for i, p in by if i == "gdp_growth") == ["2018", "2019", "2020", "2021"]
+    assert (by[("gdp_growth", "2020")].lower, by[("gdp_growth", "2020")].upper) == (
+        1.8,
+        2.3,
+    )  # high oil: 2.0-2.5
+    assert by[("cpi_dec", "2019")].value == pytest.approx(4.95)
+    assert not any(i == "key_rate_avg" for i, _ in by)
+
+
+def test_cbr_mtf_2020_reads_a_fall_of_gdp(fixtures):
+    parsed = cbr_mtf.CbrMtf().parse(
+        fixtures / "cbr_mtf" / "forecast_200424.pdf", release("cbr_mtf", date(2020, 4, 24))
+    )
+    by = {(o.indicator_id, o.target_period): o for o in parsed.observations}
+    assert (by[("gdp_growth", "2020")].lower, by[("gdp_growth", "2020")].upper) == (-6.0, -4.0)
+
+
 def test_cbr_mtf_release_list(fixtures):
     links = cbr_mtf.list_links((fixtures / "cbr_mtf" / "decision_key_rate.html").read_text(encoding="utf-8"))
     assert links[date(2026, 7, 24)].endswith("forecast_260724.pdf")

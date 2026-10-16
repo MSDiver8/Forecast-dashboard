@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import "./App.css";
-import { AboutView } from "./components/AboutView";
 import { IndicatorOverview } from "./components/IndicatorOverview";
 import { IndicatorWorkspace } from "./components/IndicatorWorkspace";
 import { PortalHeader } from "./components/PortalHeader";
@@ -11,7 +10,9 @@ import type { AppView, Overview } from "./types";
 
 function readHash(): { view: AppView; id: string | null } {
   const params = new URLSearchParams(window.location.hash.slice(1));
-  const view = (params.get("view") as AppView) || "overview";
+  const known: AppView[] = ["overview", "indicator", "sources"];
+  const asked = params.get("view") as AppView;
+  const view = known.includes(asked) ? asked : "overview";
   return { view, id: params.get("id") };
 }
 
@@ -64,8 +65,6 @@ export default function App() {
     content = <IndicatorWorkspace key={indicatorId} id={indicatorId} featured={overview.cards} onSelect={openIndicator} onBack={() => navigate("overview")} />;
   } else if (view === "sources") {
     content = <SourcesView />;
-  } else if (view === "about") {
-    content = <AboutView />;
   } else {
     content = <IndicatorOverview overview={overview} onOpenIndicator={openIndicator} onOpenSources={() => navigate("sources")} />;
   }

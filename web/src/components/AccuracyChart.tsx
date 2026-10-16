@@ -83,6 +83,9 @@ export const AccuracyChart = forwardRef<AccuracyChartHandle, Props>(function Acc
       const target = (params.data as Point | undefined)?.period;
       if (target) select.current(target);
     });
+    // Long histories hold far larger swings than the window in view (US GDP in 2020): the value axis
+    // follows the points inside the zoom window.
+    instance.on("datazoom", () => fitValueAxis(instance));
     const observer = new ResizeObserver(() => instance.resize());
     observer.observe(box.current);
     return () => { observer.disconnect(); instance.dispose(); chart.current = null; };
@@ -104,8 +107,10 @@ export const AccuracyChart = forwardRef<AccuracyChartHandle, Props>(function Acc
     const instance = chart.current;
     if (!instance) return;
     const option = mode === "evolution" ? evolutionOption(data, series, periodLabel) : periodsOption(data, period, series, periodLabel);
-    if (option) instance.setOption(option, true);
-    else instance.clear();
+    if (option) {
+      instance.setOption(option, true);
+      fitValueAxis(instance);
+    } else instance.clear();
   }, [data, mode, period, series, periodLabel]);
 
   return <div ref={box} className="acc-chart" />;
@@ -144,6 +149,48 @@ function timeAxis(min: number, max: number, name?: string) {
   };
 }
 
+interface ZoomState { start?: number; end?: number; startValue?: number; endValue?: number }
+
+/** Lower and upper bound of the value axis for the points between `start` and `end` (ms), on a round step. */
+export function visibleBounds(series: { data?: unknown[] }[], start: number, end: number): [number, number] | null {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const s of series) {
+    for (const item of s.data ?? []) {
+      const pair = Array.isArray(item) ? item : (item as { value?: unknown } | null)?.value;
+      if (!Array.isArray(pair) || typeof pair[1] !== "number" || !Number.isFinite(pair[1])) continue;
+      const x = typeof pair[0] === "number" ? pair[0] : ms(String(pair[0]));
+      if (x < start || x > end) continue;
+      lo = Math.min(lo, pair[1]);
+      hi = Math.max(hi, pair[1]);
+    }
+  }
+  if (!Number.isFinite(lo)) return null;
+  const pad = (hi - lo) * 0.1 || Math.abs(hi) * 0.1 || 1;
+  const step = niceStep((hi - lo + 2 * pad) / 5);
+  return [Math.floor((lo - pad) / step) * step, Math.ceil((hi + pad) / step) * step];
+}
+
+function niceStep(raw: number): number {
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const f = raw / power;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * power;
+}
+
+function fitValueAxis(instance: echarts.ECharts) {
+  const option = instance.getOption() as {
+    dataZoom?: ZoomState[]; xAxis?: { min?: unknown; max?: unknown }[]; series?: { data?: unknown[] }[];
+  };
+  const zoom = option.dataZoom?.[0];
+  const axis = option.xAxis?.[0];
+  if (!zoom || typeof axis?.min !== "number" || typeof axis.max !== "number") return;
+  const span = axis.max - axis.min;
+  const start = typeof zoom.startValue === "number" ? zoom.startValue : axis.min + (span * (zoom.start ?? 0)) / 100;
+  const end = typeof zoom.endValue === "number" ? zoom.endValue : axis.min + (span * (zoom.end ?? 100)) / 100;
+  const bounds = visibleBounds(option.series ?? [], start, end);
+  if (bounds) instance.setOption({ yAxis: { min: bounds[0], max: bounds[1] } });
+}
+
 const valueAxis = {
   type: "value", scale: true, boundaryGap: ["10%", "10%"],
   axisLabel: { color: "#697583", formatter: (v: number) => formatValue(v, Number.isInteger(v) ? 0 : 1) },
@@ -152,11 +199,13 @@ const valueAxis = {
 
 const legend = { top: 0, left: 44, itemGap: 16, textStyle: { color: "#4b5866", fontSize: 12 } };
 
-function bandPair(start: string, end: string, color: string, label: string, textColor: string) {
+// The window label stands above the plot and the period label inside the top of its band, so the two
+// never overlap when the window is next to the period or inside it.
+function bandPair(start: string, end: string, color: string, label: string, textColor: string, position: "top" | "insideTop" = "top") {
   return [
     {
       xAxis: start, itemStyle: { color },
-      label: { show: true, position: "top", distance: 6, color: textColor, fontWeight: 800, fontSize: 11, lineHeight: 14, formatter: label },
+      label: { show: true, position, distance: 6, color: textColor, fontWeight: 800, fontSize: 11, lineHeight: 14, formatter: label },
     },
     { xAxis: end },
   ];
@@ -201,7 +250,7 @@ function periodsOption(data: Evaluation, period: string | null, series: ChartSer
     silent: true,
     data: selected && window ? [
       bandPair(window.start, window.end, "rgba(8,117,189,.08)", t("acc.windowBand", { period: genitive(data, selected.period) }), "#0875bd"),
-      bandPair(selected.start, selected.end, "rgba(23,60,104,.07)", periodLabel(selected.period), "#173c68"),
+      bandPair(selected.start, selected.end, "rgba(23,60,104,.07)", periodLabel(selected.period), "#173c68", "insideTop"),
     ] : [],
   } as never;
   const factName = t(`acc.factPeriod${data.frequency}`);
@@ -257,8 +306,33 @@ function periodsOption(data: Evaluation, period: string | null, series: ChartSer
   });
   // Long quarterly or monthly histories open on the last 12 periods.
   const recent = rows.length > 12 ? entryOf(rows[rows.length - 12].period) : undefined;
+  // One tooltip per period: the actual and every chosen series that has a value for it.
+  const periodTip = (params: unknown) => {
+    const list = Array.isArray(params) ? params : [params];
+    const time = Number((list[0] as { axisValue?: number } | undefined)?.axisValue);
+    const entry = data.periods.find((p) => ms(p.start) <= time && time < ms(p.end) + DAY);
+    if (!entry) return "";
+    const row = rows.find((r) => r.period === entry.period);
+    const lines = series.flatMap((s) => {
+      const cell = row ? (s.model ? row.models[s.key] : row.picks[s.key]) : undefined;
+      if (!cell || !row) return [];
+      const mark = s.model ? `<i class="d" style="--c:${s.color}"></i>` : `<i style="background:${s.color}"></i>`;
+      const when = s.model ? t("acc.tipModel", { date: formatShortDate(asOf(row.window_end)) }) : issued(row.picks[s.key]);
+      const err = cell.error != null ? signed(cell.error, 1) : "";
+      return [`<tr><td>${mark}${s.name}</td><td class="n">${formatValue(cell.value, 2)}</td><td class="n e">${err}</td><td class="w">${when}</td></tr>`];
+    });
+    const fact = `<tr><td><i style="background:${ACTUAL_COLOR}"></i>${t("acc.tipFact")}</td><td class="n">${entry.fact != null ? formatValue(entry.fact, 2) : "—"}</td><td></td><td></td></tr>`;
+    const head = `<tr class="h"><td></td><td class="n">${t("acc.tipValue", { unit: data.value_unit })}</td><td class="n">${t("acc.tipError")}, ${data.error_unit}</td><td></td></tr>`;
+    return `<div class="tip-head">${periodLabel(entry.period)}</div><table class="tip-table">${head}${fact}${lines.join("")}</table>`;
+  };
   return {
     ...base,
+    tooltip: {
+      trigger: "axis", backgroundColor: "#fff", borderColor: "#cbd5dd", padding: [8, 10],
+      textStyle: { color: "#202a35", fontSize: 12 }, extraCssText: "box-shadow: 0 8px 24px rgba(21,57,92,.14);",
+      axisPointer: { type: "line", lineStyle: { color: "#9aa8b5", type: "dashed" } },
+      formatter: periodTip,
+    },
     grid: { left: 54, right: 24, top: 74, bottom: 76 },
     legend,
     dataZoom: zoom(recent ? ms(recent.start) - 20 * DAY : undefined),
@@ -285,7 +359,7 @@ function evolutionOption(data: Evaluation, series: ChartSeries[], periodLabel: (
     silent: true,
     data: [
       bandPair(ev.window.start, ev.window.end, "rgba(8,117,189,.08)", t("acc.windowBand", { period: genitive(data, ev.period) }), "#0875bd"),
-      bandPair(ev.start, ev.end, "rgba(23,60,104,.07)", label, "#173c68"),
+      bandPair(ev.start, ev.end, "rgba(23,60,104,.07)", label, "#173c68", "insideTop"),
     ],
   } as never;
   const factName = t(`acc.factPeriod${data.frequency}`);

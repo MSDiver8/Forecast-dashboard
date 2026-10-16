@@ -9,7 +9,7 @@ import ssl
 import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import certifi
@@ -66,11 +66,6 @@ class Parsed:
 
 class SourceStructureError(RuntimeError):
     """The raw file does not have the structure the parser expects."""
-
-
-def archive_start(years: int) -> date:
-    """Oldest vintage kept: 5 years for annual forecasts, about 2 years for other frequencies."""
-    return date.today() - timedelta(days=365 * years + 31)
 
 
 def quarter_of(day: date) -> str:

@@ -21,11 +21,13 @@ from fdash.ingest.base import (
     Parsed,
     Release,
     SourceStructureError,
-    archive_start,
     copy_into,
     download_temp,
 )
 from fdash.ingest.registry import register
+
+# "In the survey of 1992:Q1, the survey's measure of output switches from GNP to GDP" (SPF documentation).
+FIRST_GDP_SURVEY = (1992, 1)
 
 ASSETS = (
     "https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/"
@@ -100,11 +102,12 @@ class SpfPhilly(Connector):
     def list_releases(self) -> list[Release]:
         workbook, dates_file = self._download_latest()
         dates = release_dates(dates_file.read_text(encoding="utf-8", errors="replace"))
-        start = archive_start(2)
         releases = []
         for year, quarter in sorted(surveys(workbook)):
+            if (year, quarter) < FIRST_GDP_SURVEY:
+                continue  # real GNP before 1992 Q1: another definition than the BEA real GDP actuals
             published = dates.get((year, quarter))
-            if published is None or published < start:
+            if published is None:
                 continue
             releases.append(
                 Release(

@@ -3,6 +3,7 @@ import { api } from "../api";
 import { formatShortDate } from "../format";
 import { t } from "../i18n";
 import type { RegistrySource } from "../types";
+import { SourceTip } from "./SourceTip";
 
 export function SourcesView() {
   const [sources, setSources] = useState<RegistrySource[] | null>(null);
@@ -49,14 +50,15 @@ export function SourcesView() {
               <span className={`source-status source-status--${s.role === "forecast" ? "connected" : "ready"}`}>
                 {s.role === "forecast" ? t("src.forecast") : t("src.actual")}
               </span>
-              <h2><i className="source-dot" style={{ background: s.color }} />{s.short}</h2>
+              <h2><i className="source-dot" style={{ background: s.color }} />{s.short}<SourceTip summary={s.description} caveat={s.caveat} /></h2>
               <strong>{s.organization} · {s.name}</strong>
               <p>{s.description}</p>
-              {s.caveat && <p className="source-record__caveat">{s.caveat}</p>}
             </div>
             <dl className="source-record__facts">
               <div><dt>{t("src.indicators")}</dt><dd>{s.indicators.join(", ")}</dd></div>
               <div><dt>{t("src.releases")}</dt><dd>{s.releases}</dd></div>
+              <div><dt>{t("src.lastRelease")}</dt><dd>{formatShortDate(s.last_vintage)}</dd></div>
+              <div><dt>{t("src.checked")}</dt><dd>{formatShortDate(s.checked_at)}{s.check_error && <small className="source-record__check-error" title={s.check_error}>{t("src.checkError", { date: formatShortDate(s.check_error_at) })}</small>}</dd></div>
               <div><dt>{t("src.period")}</dt><dd>{formatShortDate(s.first_vintage)} — {formatShortDate(s.last_vintage)}</dd></div>
               <div><dt>{t("src.access")}</dt><dd>{s.access}</dd></div>
               <div><dt>{t("src.license")}</dt><dd>{s.license}</dd></div>

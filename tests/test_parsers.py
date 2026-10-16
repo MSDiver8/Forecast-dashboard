@@ -13,12 +13,12 @@ def release(source_id: str, vintage: date, **extra) -> Release:
     return Release(f"{source_id}_test", source_id, "test", vintage, "http://example", "x", extra)
 
 
-def test_eia_release_page_lists_two_years(fixtures):
+def test_eia_release_page_lists_the_whole_archive(fixtures):
     html = (fixtures / "eia_steo" / "outlook.html").read_text(encoding="utf-8")
     found = eia_steo.parse_release_page(html, date(2026, 10, 7))
-    assert found[-1] == ("oct26", date(2026, 10, 6))
+    assert found[0] == ("jul13", date(2013, 7, 9)) and found[-1] == ("oct26", date(2026, 10, 6))
     assert ("jun25", date(2025, 6, 10)) in found  # dates without a leading zero
-    assert len(found) == 26
+    assert len(found) == 157
 
 
 def test_eia_steo_brent_months(fixtures):
@@ -29,6 +29,17 @@ def test_eia_steo_brent_months(fixtures):
     assert parsed.data_cutoff == "2026-09"
     assert by_period["2022-01"].value == pytest.approx(86.51)
     assert by_period["2026-09"].kind == "actual" and by_period["2026-10"].kind == "forecast"
+
+
+def test_eia_steo_before_july_2017_takes_the_boundary_from_bold_and_italics(fixtures):
+    # no Dates!D7 in these files: historical months are bold, forecast months italic
+    parsed = eia_steo.EiaSteo().parse(
+        fixtures / "eia_steo" / "jul13_base-dates-2tab.xlsx", release("eia_steo", date(2013, 7, 9))
+    )
+    by_period = {o.target_period: o for o in parsed.observations}
+    assert parsed.data_cutoff == "2013-06"
+    assert by_period["2013-06"].value == pytest.approx(102.92) and by_period["2013-06"].kind == "actual"
+    assert by_period["2013-07"].value == pytest.approx(101.5) and by_period["2013-07"].kind == "forecast"
 
 
 def test_eia_brent_spot_monthly_and_annual(fixtures):

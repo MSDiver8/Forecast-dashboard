@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -25,7 +25,7 @@ CURRENT_DATE = re.compile(r"Release Date:</strong>\s*([A-Z][a-z]+ \d{1,2}, \d{4}
 SERIES = {"BREPUUS": ("brent_price", "WORLD")}
 
 
-def parse_release_page(html: str, today: date, years: int = 2) -> list[tuple[str, date]]:
+def parse_release_page(html: str, today: date) -> list[tuple[str, date]]:
     """(file stem, publication date) for the current release and the archive."""
     found: dict[str, date] = {}
     for row in html.split("<tr")[1:]:
@@ -37,8 +37,7 @@ def parse_release_page(html: str, today: date, years: int = 2) -> list[tuple[str
         published = datetime.strptime(current.group(1), "%B %d, %Y").date()
         stem = published.strftime("%b%y").lower()
         found.setdefault(stem, published)
-    since = today - timedelta(days=365 * years + 31)
-    return sorted(((s, d) for s, d in found.items() if d >= since), key=lambda item: item[1])
+    return sorted(((s, d) for s, d in found.items() if d <= today), key=lambda item: item[1])
 
 
 class EiaSteo(Connector):
@@ -68,37 +67,57 @@ class EiaSteo(Connector):
         wb = load_workbook(raw, read_only=True, data_only=True)
         if "Dates" not in wb.sheetnames or "2tab" not in wb.sheetnames:
             raise SourceStructureError(f"{raw.name}: sheets Dates/2tab not found")
-        cutoff_code = wb["Dates"].cell(7, 4).value
-        if not isinstance(cutoff_code, int):
-            raise SourceStructureError(f"{raw.name}: Dates!D7 is not YYYYMM: {cutoff_code!r}")
-        cutoff = f"{cutoff_code // 100:04d}-{cutoff_code % 100:02d}"
         sheet = wb["2tab"]
         rows = {sheet.cell(r, 1).value: r for r in range(1, min(sheet.max_row, 200) + 1)}
-        observations = []
-        for code, (indicator_id, area_id) in SERIES.items():
+        series = {}
+        for code in SERIES:
             if code not in rows:
                 raise SourceStructureError(f"{raw.name}: series {code} not found on 2tab")
-            year = None
-            for col in range(3, sheet.max_column + 1):
-                header_year = sheet.cell(3, col).value
-                if isinstance(header_year, int | float) and 1990 < header_year < 2100:
-                    year = int(header_year)
-                month = MONTHS.get(str(sheet.cell(4, col).value).strip())
-                value = sheet.cell(rows[code], col).value
-                if year is None or month is None or not isinstance(value, int | float):
-                    continue
-                period = f"{year:04d}-{month:02d}"
-                observations.append(
-                    Observation(
-                        indicator_id,
-                        area_id,
-                        period,
-                        "M",
-                        float(value),
-                        "actual" if period <= cutoff else "forecast",
-                    )
-                )
+            series[code] = read_months(sheet, rows[code])
+        cutoff_code = wb["Dates"].cell(7, 4).value
+        if isinstance(cutoff_code, int):
+            cutoff = f"{cutoff_code // 100:04d}-{cutoff_code % 100:02d}"
+        elif cutoff_code is None:
+            cutoff = styled_cutoff(raw.name, series["BREPUUS"])
+        else:
+            raise SourceStructureError(f"{raw.name}: Dates!D7 is not YYYYMM: {cutoff_code!r}")
+        observations = [
+            Observation(
+                indicator_id, area_id, period, "M", value, "actual" if period <= cutoff else "forecast"
+            )
+            for code, (indicator_id, area_id) in SERIES.items()
+            for period, value, _ in series[code]
+        ]
         return Parsed(observations, data_cutoff=cutoff)
+
+
+def read_months(sheet, row: int) -> list[tuple[str, float, bool]]:
+    """(YYYY-MM, value, set in italics) for each month of a series row on 2tab."""
+    found = []
+    year = None
+    for col in range(3, sheet.max_column + 1):
+        header_year = sheet.cell(3, col).value
+        if isinstance(header_year, int | float) and 1990 < header_year < 2100:
+            year = int(header_year)
+        month = MONTHS.get(str(sheet.cell(4, col).value).strip())
+        cell = sheet.cell(row, col)
+        if year is None or month is None or not isinstance(cell.value, int | float):
+            continue
+        found.append((f"{year:04d}-{month:02d}", float(cell.value), bool(cell.font and cell.font.i)))
+    return found
+
+
+def styled_cutoff(name: str, months: list[tuple[str, float, bool]]) -> str:
+    """Last historical month of files before July 2017, which have no Dates!D7.
+
+    There historical months are set in bold and forecast months in italics; in the files that
+    have both (07.2017-05.2024) this boundary matches D7 in 79 of 80 releases.
+    """
+    italic = [flag for _, _, flag in months]
+    first = italic.index(True) if True in italic else 0
+    if first == 0 or not all(italic[first:]):
+        raise SourceStructureError(f"{name}: no Dates!D7 and no bold/italic boundary on 2tab")
+    return months[first - 1][0]
 
 
 register(EiaSteo())
